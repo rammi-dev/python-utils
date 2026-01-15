@@ -1,0 +1,308 @@
+# GitLab CI/CD Pipeline for dlh-airflow-common
+# Uses setuptools-scm for versioning (version derived from git tags)
+# Two-stage deployment: Dev (testing) → Prod (stable releases)
+
+variables:
+  UV_CACHE_DIR: "$CI_PROJECT_DIR/.cache/uv"
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  PYTHON_VERSION: "3.11"
+
+cache:
+  paths:
+    - .cache/uv
+    - .cache/pip
+    - .venv
+
+stages:
+  - test
+  - build
+  - deploy-dev
+  - deploy-prod
+
+# ============================================================================
+# TEST STAGE - Quality checks with uv
+# ============================================================================
+
+.test_template: &test_template
+  stage: test
+  image: python:3.11-slim
+  before_script:
+    - apt-get update && apt-get install -y curl git
+    - curl -LsSf https://astral.sh/uv/install.sh | sh
+    - export PATH="$HOME/.cargo/bin:$PATH"
+    - uv python install $PYTHON_VERSION
+    - uv venv --python $PYTHON_VERSION
+    - source .venv/bin/activate
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_TAG'
+
+test:lint:
+  <<: *test_template
+  script:
+    - uv pip install ruff
+    - ruff check src/ tests/
+    - echo "✓ Linting passed"
+
+test:format:
+  <<: *test_template
+  script:
+    - uv pip install black
+    - black --check src/ tests/
+    - echo "✓ Formatting check passed"
+
+test:type-check:
+  <<: *test_template
+  script:
+    - uv pip install mypy apache-airflow
+    - mypy src/
+    - echo "✓ Type checking passed"
+
+test:pytest:
+  <<: *test_template
+  script:
+    - uv pip install -e ".[dev]"
+    - pytest --cov=dlh_airflow_common --cov-report=xml --cov-report=term --cov-report=html --cov-fail-under=100
+    - echo "✓ Tests passed with 100% coverage"
+  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+    paths:
+      - htmlcov/
+    expire_in: 1 week
+
+test:security:
+  <<: *test_template
+  script:
+    - uv pip install bandit safety
+    - bandit -r src/ -f json -o bandit-report.json || true
+    - safety check --json || true
+    - echo "✓ Security scan completed"
+  artifacts:
+    paths:
+      - bandit-report.json
+    expire_in: 1 week
+  allow_failure: true
+
+# ============================================================================
+# BUILD STAGE - Build package using setuptools-scm
+# Version is automatically derived from git tags
+# ============================================================================
+
+build:package:
+  stage: build
+  image: python:3.11-slim
+  before_script:
+    - apt-get update && apt-get install -y curl git
+    - curl -LsSf https://astral.sh/uv/install.sh | sh
+    - export PATH="$HOME/.cargo/bin:$PATH"
+    - uv python install $PYTHON_VERSION
+    - uv venv --python $PYTHON_VERSION
+    - source .venv/bin/activate
+  script:
+    - |
+      echo "=== Building Package ==="
+
+      # Fetch all tags for setuptools-scm
+      git fetch --tags --unshallow || git fetch --tags
+
+      # Show current version (from setuptools-scm)
+      uv pip install setuptools-scm
+      VERSION=$(python -c "from setuptools_scm import get_version; print(get_version())")
+      echo "Building version: $VERSION"
+
+      # Install build dependencies
+      uv pip install build
+
+      # Build package
+      python -m build
+
+      # List built packages
+      echo "Built packages:"
+      ls -lh dist/
+
+      # Save version for later stages
+      echo "$VERSION" > version.txt
+
+      echo "=== Build Complete ==="
+  artifacts:
+    paths:
+      - dist/
+      - version.txt
+    expire_in: 1 week
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_TAG'
+
+# ============================================================================
+# DEPLOY DEV STAGE - Deploy to development/testing Nexus repository
+# Triggered on: MR builds, main branch commits (non-tagged)
+# IMPORTANT: Dev repository is MUTABLE - same version can be overwritten
+# ============================================================================
+
+deploy:dev:
+  stage: deploy-dev
+  image: python:3.11-slim
+  dependencies:
+    - build:package
+  before_script:
+    - apt-get update && apt-get install -y curl
+    - curl -LsSf https://astral.sh/uv/install.sh | sh
+    - export PATH="$HOME/.cargo/bin:$PATH"
+    - uv pip install twine
+  script:
+    - |
+      echo "=== Deploying to DEV Nexus ==="
+
+      VERSION=$(cat version.txt)
+      echo "Deploying version: $VERSION"
+
+      # Upload to DEV Nexus repository
+      twine upload \
+        --repository-url "$NEXUS_DEV_URL" \
+        --username "$NEXUS_USERNAME" \
+        --password "$NEXUS_PASSWORD" \
+        --non-interactive \
+        dist/*
+
+      echo "✓ Deployed to DEV Nexus: $VERSION"
+      echo "Install with: pip install dlh-airflow-common==$VERSION --index-url $NEXUS_DEV_URL/simple/"
+  environment:
+    name: development
+    url: $NEXUS_DEV_URL
+  rules:
+    # Auto-deploy dev builds from main branch (non-tagged commits)
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"'
+      when: on_success
+    # Manual deploy for MR builds (for testing)
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: manual
+  needs:
+    - build:package
+    - test:lint
+    - test:format
+    - test:type-check
+    - test:pytest
+
+# ============================================================================
+# DEPLOY PROD STAGE - Deploy to production Nexus repository
+# Triggered on: Git tags only (stable releases)
+# IMPORTANT: Prod repository is IMMUTABLE - versions cannot be overwritten
+# ============================================================================
+
+deploy:prod:
+  stage: deploy-prod
+  image: python:3.11-slim
+  dependencies:
+    - build:package
+  before_script:
+    - apt-get update && apt-get install -y curl
+    - curl -LsSf https://astral.sh/uv/install.sh | sh
+    - export PATH="$HOME/.cargo/bin:$PATH"
+    - uv pip install twine
+  script:
+    - |
+      echo "=== Deploying to PROD Nexus (IMMUTABLE) ==="
+
+      VERSION=$(cat version.txt)
+      echo "Deploying version: $VERSION"
+
+      # Verify this is a stable version (no dev suffix)
+      if echo "$VERSION" | grep -q "\.dev"; then
+        echo "ERROR: Cannot deploy dev version to production!"
+        echo "Create a git tag first: git tag v1.0.0 && git push origin v1.0.0"
+        exit 1
+      fi
+
+      # Upload to PROD Nexus repository
+      # Note: Prod is immutable - if version exists, upload will fail (expected behavior)
+      twine upload \
+        --repository-url "$NEXUS_PROD_URL" \
+        --username "$NEXUS_USERNAME" \
+        --password "$NEXUS_PASSWORD" \
+        --non-interactive \
+        dist/* || {
+          echo "=========================================="
+          echo "ERROR: Upload failed!"
+          echo "If version $VERSION already exists in prod, this is expected."
+          echo "Prod repository is IMMUTABLE - versions cannot be overwritten."
+          echo "To fix: Create a new version tag (e.g., v${VERSION%.*}.$((${VERSION##*.}+1)))"
+          echo "=========================================="
+          exit 1
+        }
+
+      echo "✓ Deployed to PROD Nexus: $VERSION"
+      echo "Install with: pip install dlh-airflow-common==$VERSION --index-url $NEXUS_PROD_URL/simple/"
+  environment:
+    name: production
+    url: $NEXUS_PROD_URL
+  rules:
+    # Only deploy to prod on git tags (stable releases)
+    - if: '$CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/'
+      when: on_success
+    # Allow manual promotion from main branch
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"'
+      when: manual
+  needs:
+    - build:package
+    - test:lint
+    - test:format
+    - test:type-check
+    - test:pytest
+
+# ============================================================================
+# RELEASE NOTES - Generate changelog for tagged releases
+# ============================================================================
+
+create:release-notes:
+  stage: deploy-prod
+  image: python:3.11-slim
+  dependencies:
+    - build:package
+  before_script:
+    - apt-get update && apt-get install -y git
+  script:
+    - |
+      echo "=== Creating Release Notes ==="
+
+      VERSION=$(cat version.txt)
+
+      # Get previous tag
+      git fetch --tags
+      PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+      # Generate changelog
+      echo "# Release v$VERSION" > RELEASE_NOTES.md
+      echo "" >> RELEASE_NOTES.md
+      echo "## Changes" >> RELEASE_NOTES.md
+      echo "" >> RELEASE_NOTES.md
+
+      if [ -n "$PREV_TAG" ]; then
+        echo "Changes since $PREV_TAG:" >> RELEASE_NOTES.md
+        git log $PREV_TAG..HEAD --pretty=format:"- %s (%an)" >> RELEASE_NOTES.md
+      else
+        echo "Initial release" >> RELEASE_NOTES.md
+      fi
+
+      echo "" >> RELEASE_NOTES.md
+      echo "## Installation" >> RELEASE_NOTES.md
+      echo "" >> RELEASE_NOTES.md
+      echo "\`\`\`bash" >> RELEASE_NOTES.md
+      echo "pip install dlh-airflow-common==$VERSION --index-url \$NEXUS_PROD_URL/simple/" >> RELEASE_NOTES.md
+      echo "\`\`\`" >> RELEASE_NOTES.md
+
+      cat RELEASE_NOTES.md
+      echo "✓ Release notes created"
+  artifacts:
+    paths:
+      - RELEASE_NOTES.md
+    expire_in: 1 month
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/'
+      when: on_success
+  allow_failure: true
