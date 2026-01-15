@@ -49,10 +49,10 @@ where = ["src"]
 
 # Setuptools-scm configuration
 [tool.setuptools_scm]
-# Write version to file for runtime access
 write_to = "src/dlh_airflow_common/_version.py"
-# Use only public version (no local +gXXXX suffix) for Nexus compatibility
 local_scheme = "no-local-version"
+fallback_version = "0.0.0"
+
 
 [tool.setuptools.package-data]
 dlh_airflow_common = ["py.typed"]
