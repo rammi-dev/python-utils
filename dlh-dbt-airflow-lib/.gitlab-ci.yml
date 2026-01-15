@@ -1,0 +1,399 @@
+# GitLab CI/CD Pipeline for dlh-airflow-common
+# Automatic semantic versioning based on MR description: [MAJOR], [MINOR], [PATCH]
+
+variables:
+  UV_CACHE_DIR: "$CI_PROJECT_DIR/.cache/uv"
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  PYTHON_VERSION: "3.11"
+
+cache:
+  paths:
+    - .cache/uv
+    - .cache/pip
+    - .venv
+
+stages:
+  - version
+  - test
+  - build
+  - deploy
+
+# ============================================================================
+# VERSION STAGE - Automatic semantic versioning
+# ============================================================================
+
+calculate_version:
+  stage: version
+  image: python:3.11-slim
+  script:
+    - |
+      echo "=== Calculating Version ==="
+
+      # Install git if not present
+      apt-get update && apt-get install -y git
+
+      # Get the target branch (branch we're merging into)
+      if [ -n "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" ]; then
+        TARGET_BRANCH="$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+      else
+        TARGET_BRANCH="$CI_COMMIT_BRANCH"
+      fi
+
+      echo "Target branch: $TARGET_BRANCH"
+
+      # Fetch all tags
+      git fetch --tags
+
+      # Get the last tag on the target branch
+      LAST_TAG=$(git describe --tags --abbrev=0 origin/$TARGET_BRANCH 2>/dev/null || echo "v0.0.0")
+      echo "Last tag on $TARGET_BRANCH: $LAST_TAG"
+
+      # Remove 'v' prefix if present
+      CURRENT_VERSION="${LAST_TAG#v}"
+      echo "Current version: $CURRENT_VERSION"
+
+      # Parse version components
+      IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+      MAJOR=${MAJOR:-0}
+      MINOR=${MINOR:-0}
+      PATCH=${PATCH:-0}
+
+      echo "Parsed version: $MAJOR.$MINOR.$PATCH"
+
+      # Determine version bump from MR description or commit message
+      VERSION_BUMP="patch"  # Default
+
+      if [ -n "$CI_MERGE_REQUEST_DESCRIPTION" ]; then
+        if echo "$CI_MERGE_REQUEST_DESCRIPTION" | grep -qi "\[MAJOR\]"; then
+          VERSION_BUMP="major"
+        elif echo "$CI_MERGE_REQUEST_DESCRIPTION" | grep -qi "\[MINOR\]"; then
+          VERSION_BUMP="minor"
+        elif echo "$CI_MERGE_REQUEST_DESCRIPTION" | grep -qi "\[PATCH\]"; then
+          VERSION_BUMP="patch"
+        fi
+      elif [ -n "$CI_COMMIT_MESSAGE" ]; then
+        if echo "$CI_COMMIT_MESSAGE" | grep -qi "\[MAJOR\]"; then
+          VERSION_BUMP="major"
+        elif echo "$CI_COMMIT_MESSAGE" | grep -qi "\[MINOR\]"; then
+          VERSION_BUMP="minor"
+        fi
+      fi
+
+      echo "Version bump type: $VERSION_BUMP"
+
+      # Calculate new version
+      case "$VERSION_BUMP" in
+        major)
+          MAJOR=$((MAJOR + 1))
+          MINOR=0
+          PATCH=0
+          ;;
+        minor)
+          MINOR=$((MINOR + 1))
+          PATCH=0
+          ;;
+        patch)
+          PATCH=$((PATCH + 1))
+          ;;
+      esac
+
+      NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+      echo "New version: $NEW_VERSION"
+
+      # Save to file for other jobs
+      echo "$NEW_VERSION" > version.txt
+      echo "export NEW_VERSION=$NEW_VERSION" > version.env
+
+      echo "=== Version Calculation Complete ==="
+      echo "Version: v$NEW_VERSION (from v$CURRENT_VERSION, bump: $VERSION_BUMP)"
+  artifacts:
+    paths:
+      - version.txt
+      - version.env
+    expire_in: 1 day
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+# ============================================================================
+# TEST STAGE - Quality checks with uv
+# ============================================================================
+
+.test_template: &test_template
+  stage: test
+  image: python:3.11-slim
+  before_script:
+    - apt-get update && apt-get install -y curl git
+    - curl -LsSf https://astral.sh/uv/install.sh | sh
+    - export PATH="$HOME/.cargo/bin:$PATH"
+    - uv python install $PYTHON_VERSION
+    - uv venv --python $PYTHON_VERSION
+    - source .venv/bin/activate
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"'
+
+test:lint:
+  <<: *test_template
+  script:
+    - uv pip install ruff
+    - ruff check src/ tests/
+    - echo "✓ Linting passed"
+
+test:format:
+  <<: *test_template
+  script:
+    - uv pip install black
+    - black --check src/ tests/
+    - echo "✓ Formatting check passed"
+
+test:type-check:
+  <<: *test_template
+  script:
+    - uv pip install mypy apache-airflow
+    - mypy src/
+    - echo "✓ Type checking passed"
+
+test:pytest:
+  <<: *test_template
+  script:
+    - uv pip install -e ".[dev]"
+    - pytest --cov=dlh_airflow_common --cov-report=xml --cov-report=term --cov-report=html --cov-fail-under=100
+    - echo "✓ Tests passed with 100% coverage"
+  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+    paths:
+      - htmlcov/
+    expire_in: 1 week
+
+test:security:
+  <<: *test_template
+  script:
+    - uv pip install bandit safety
+    - bandit -r src/ -f json -o bandit-report.json || true
+    - safety check --json || true
+    - echo "✓ Security scan completed"
+  artifacts:
+    paths:
+      - bandit-report.json
+    expire_in: 1 week
+  allow_failure: true
+
+# ============================================================================
+# BUILD STAGE - Build package with version update
+# ============================================================================
+
+build:package:
+  stage: build
+  image: python:3.11-slim
+  dependencies:
+    - calculate_version
+  before_script:
+    - apt-get update && apt-get install -y curl git
+    - curl -LsSf https://astral.sh/uv/install.sh | sh
+    - export PATH="$HOME/.cargo/bin:$PATH"
+    - uv python install $PYTHON_VERSION
+    - uv venv --python $PYTHON_VERSION
+    - source .venv/bin/activate
+  script:
+    - |
+      echo "=== Building Package ==="
+
+      # Read new version
+      NEW_VERSION=$(cat version.txt)
+      echo "Building version: $NEW_VERSION"
+
+      # Update version in pyproject.toml
+      sed -i "s/^version = .*/version = \"$NEW_VERSION\"/" pyproject.toml
+
+      # Update version in __init__.py
+      sed -i "s/__version__ = .*/__version__ = \"$NEW_VERSION\"/" src/dlh_airflow_common/__init__.py
+
+      # Verify version updates
+      echo "Version in pyproject.toml:"
+      grep "^version = " pyproject.toml
+      echo "Version in __init__.py:"
+      grep "__version__" src/dlh_airflow_common/__init__.py
+
+      # Install build dependencies
+      uv pip install build
+
+      # Build package
+      python -m build
+
+      # List built packages
+      echo "Built packages:"
+      ls -lh dist/
+
+      echo "=== Build Complete ==="
+  artifacts:
+    paths:
+      - dist/
+      - version.txt
+      - pyproject.toml
+      - src/dlh_airflow_common/__init__.py
+    expire_in: 1 week
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: manual
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"'
+
+# ============================================================================
+# DEPLOY STAGE - Tag, commit, and deploy to Nexus
+# ============================================================================
+
+deploy:tag-version:
+  stage: deploy
+  image: python:3.11-slim
+  dependencies:
+    - calculate_version
+    - build:package
+  before_script:
+    - apt-get update && apt-get install -y git curl
+  script:
+    - |
+      echo "=== Creating Git Tag ==="
+
+      NEW_VERSION=$(cat version.txt)
+      echo "Version: $NEW_VERSION"
+
+      # Configure git
+      git config --global user.email "gitlab-ci@dlh.com"
+      git config --global user.name "GitLab CI"
+
+      # Commit version changes
+      git add pyproject.toml src/dlh_airflow_common/__init__.py
+      git commit -m "chore: bump version to $NEW_VERSION [skip ci]" || true
+
+      # Create and push tag
+      git tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION"
+
+      # Push changes (requires CI/CD token with write access)
+      git remote set-url origin "https://oauth2:${CI_PUSH_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+      git push origin HEAD:$CI_COMMIT_BRANCH -o ci.skip
+      git push origin "v$NEW_VERSION"
+
+      echo "✓ Tagged version v$NEW_VERSION"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"'
+      when: on_success
+  environment:
+    name: production
+  needs:
+    - calculate_version
+    - build:package
+    - test:lint
+    - test:format
+    - test:type-check
+    - test:pytest
+
+deploy:nexus:
+  stage: deploy
+  image: python:3.11-slim
+  dependencies:
+    - build:package
+    - calculate_version
+  before_script:
+    - apt-get update && apt-get install -y curl
+    - curl -LsSf https://astral.sh/uv/install.sh | sh
+    - export PATH="$HOME/.cargo/bin:$PATH"
+    - uv python install $PYTHON_VERSION
+    - uv venv --python $PYTHON_VERSION
+    - source .venv/bin/activate
+  script:
+    - |
+      echo "=== Deploying to Nexus ==="
+
+      NEW_VERSION=$(cat version.txt)
+      echo "Deploying version: $NEW_VERSION"
+
+      # Install twine
+      uv pip install twine
+
+      # Upload to Nexus
+      twine upload \
+        --repository-url "$NEXUS_REPOSITORY_URL" \
+        --username "$NEXUS_USERNAME" \
+        --password "$NEXUS_PASSWORD" \
+        --non-interactive \
+        dist/*
+
+      echo "✓ Deployed to Nexus"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"'
+      when: on_success
+  environment:
+    name: nexus
+    url: $NEXUS_REPOSITORY_URL
+  needs:
+    - deploy:tag-version
+
+deploy:nexus-manual:
+  stage: deploy
+  image: python:3.11-slim
+  dependencies:
+    - build:package
+  before_script:
+    - apt-get update && apt-get install -y curl
+    - curl -LsSf https://astral.sh/uv/install.sh | sh
+    - export PATH="$HOME/.cargo/bin:$PATH"
+    - uv pip install twine
+  script:
+    - |
+      echo "=== Manual Deployment to Nexus ==="
+      twine upload \
+        --repository-url "$NEXUS_REPOSITORY_URL" \
+        --username "$NEXUS_USERNAME" \
+        --password "$NEXUS_PASSWORD" \
+        --non-interactive \
+        dist/*
+      echo "✓ Manually deployed to Nexus"
+  when: manual
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+  environment:
+    name: nexus-test
+    url: $NEXUS_REPOSITORY_URL
+
+# ============================================================================
+# RELEASE NOTES (optional)
+# ============================================================================
+
+create:release-notes:
+  stage: deploy
+  image: python:3.11-slim
+  dependencies:
+    - calculate_version
+  before_script:
+    - apt-get update && apt-get install -y git curl jq
+  script:
+    - |
+      echo "=== Creating Release Notes ==="
+
+      NEW_VERSION=$(cat version.txt)
+      LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+      # Generate changelog
+      if [ -n "$LAST_TAG" ]; then
+        echo "Changes since $LAST_TAG:" > RELEASE_NOTES.md
+        git log $LAST_TAG..HEAD --pretty=format:"- %s (%an)" >> RELEASE_NOTES.md
+      else
+        echo "Initial release v$NEW_VERSION" > RELEASE_NOTES.md
+      fi
+
+      cat RELEASE_NOTES.md
+      echo "✓ Release notes created"
+  artifacts:
+    paths:
+      - RELEASE_NOTES.md
+    expire_in: 1 week
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"'
+      when: on_success
+  allow_failure: true
