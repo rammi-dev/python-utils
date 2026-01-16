@@ -9,13 +9,17 @@
 # Version Flow:
 #   - Commits to main/release branches → Dev repo (X.Y.Z.devN)
 #   - Git tags (vX.Y.Z) → Prod repo (X.Y.Z)
+#
+# Python Versions:
+#   - Tests run against Python 3.11 and 3.12 (matrix)
+#   - Build uses Python 3.11
 
 variables:
   UV_CACHE_DIR: "$CI_PROJECT_DIR/.cache/uv"
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
-  PYTHON_VERSION: "3.11"
 
 cache:
+  key: "${CI_JOB_NAME}-${PYTHON_VERSION}"
   paths:
     - .cache/uv
     - .cache/pip
@@ -28,12 +32,12 @@ stages:
   - deploy-prod
 
 # ============================================================================
-# TEST STAGE - Quality checks with uv
+# TEST STAGE - Quality checks with uv (matrix: Python 3.11, 3.12)
 # ============================================================================
 
 .test_template: &test_template
   stage: test
-  image: python:3.11-slim
+  image: python:${PYTHON_VERSION}-slim
   before_script:
     - apt-get update && apt-get install -y curl git
     - curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -47,8 +51,15 @@ stages:
     - if: '$CI_COMMIT_BRANCH =~ /^release\//'
     - if: '$CI_COMMIT_TAG'
 
+.python_matrix:
+  parallel:
+    matrix:
+      - PYTHON_VERSION: ["3.11", "3.12"]
+
 test:lint:
   <<: *test_template
+  variables:
+    PYTHON_VERSION: "3.11"
   script:
     - uv pip install ruff
     - ruff check src/ tests/
@@ -56,6 +67,8 @@ test:lint:
 
 test:format:
   <<: *test_template
+  variables:
+    PYTHON_VERSION: "3.11"
   script:
     - uv pip install black
     - black --check src/ tests/
@@ -63,6 +76,8 @@ test:format:
 
 test:type-check:
   <<: *test_template
+  variables:
+    PYTHON_VERSION: "3.11"
   script:
     - uv pip install mypy apache-airflow
     - mypy src/
@@ -70,10 +85,12 @@ test:type-check:
 
 test:pytest:
   <<: *test_template
+  extends:
+    - .python_matrix
   script:
     - uv pip install -e ".[dev]"
     - pytest --cov=dlh_airflow_common --cov-report=xml --cov-report=term --cov-report=html --cov-fail-under=100
-    - echo "✓ Tests passed with 100% coverage"
+    - echo "✓ Tests passed with 100% coverage (Python $PYTHON_VERSION)"
   coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
   artifacts:
     reports:
@@ -86,6 +103,8 @@ test:pytest:
 
 test:security:
   <<: *test_template
+  variables:
+    PYTHON_VERSION: "3.11"
   script:
     - uv pip install bandit safety
     - bandit -r src/ -f json -o bandit-report.json || true
@@ -105,6 +124,8 @@ test:security:
 build:package:
   stage: build
   image: python:3.11-slim
+  variables:
+    PYTHON_VERSION: "3.11"
   before_script:
     - apt-get update && apt-get install -y curl git
     - curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -200,7 +221,10 @@ deploy:dev:
     - test:lint
     - test:format
     - test:type-check
-    - test:pytest
+    - job: test:pytest
+      parallel:
+        matrix:
+          - PYTHON_VERSION: ["3.11", "3.12"]
 
 # ============================================================================
 # DEPLOY PROD STAGE - Deploy to production Nexus repository
@@ -269,7 +293,10 @@ deploy:prod:
     - test:lint
     - test:format
     - test:type-check
-    - test:pytest
+    - job: test:pytest
+      parallel:
+        matrix:
+          - PYTHON_VERSION: ["3.11", "3.12"]
 
 # ============================================================================
 # RELEASE NOTES - Generate changelog for tagged releases
