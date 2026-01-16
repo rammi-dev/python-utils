@@ -94,7 +94,7 @@ from datetime import datetime
 with DAG(
     "my_dag",
     start_date=datetime(2024, 1, 1),
-    schedule_interval="@daily",
+    schedule="@daily",
 ) as dag:
     task = MyCustomOperator(
         task_id="my_task",
@@ -112,7 +112,7 @@ from datetime import datetime
 with DAG(
     "dbt_pipeline",
     start_date=datetime(2024, 1, 1),
-    schedule_interval="@daily",
+    schedule="@daily",
     catchup=False,
 ) as dag:
 

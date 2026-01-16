@@ -1,6 +1,14 @@
 # GitLab CI/CD Pipeline for dlh-airflow-common
 # Uses setuptools-scm for versioning (version derived from git tags)
 # Two-stage deployment: Dev (testing) → Prod (stable releases)
+#
+# Branch Strategy:
+#   - main: Active development for latest major version
+#   - release/X.x: Maintenance branches for older major versions (e.g., release/1.x)
+#
+# Version Flow:
+#   - Commits to main/release branches → Dev repo (X.Y.Z.devN)
+#   - Git tags (vX.Y.Z) → Prod repo (X.Y.Z)
 
 variables:
   UV_CACHE_DIR: "$CI_PROJECT_DIR/.cache/uv"
@@ -36,6 +44,7 @@ stages:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_BRANCH =~ /^release\//'
     - if: '$CI_COMMIT_TAG'
 
 test:lint:
@@ -137,11 +146,12 @@ build:package:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_BRANCH =~ /^release\//'
     - if: '$CI_COMMIT_TAG'
 
 # ============================================================================
 # DEPLOY DEV STAGE - Deploy to development/testing Nexus repository
-# Triggered on: MR builds, main branch commits (non-tagged)
+# Triggered on: main branch, release branches (non-tagged commits)
 # IMPORTANT: Dev repository is MUTABLE - same version can be overwritten
 # ============================================================================
 
@@ -178,6 +188,9 @@ deploy:dev:
   rules:
     # Auto-deploy dev builds from main branch (non-tagged commits)
     - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"'
+      when: on_success
+    # Auto-deploy dev builds from release branches
+    - if: '$CI_COMMIT_BRANCH =~ /^release\//'
       when: on_success
     # Manual deploy for MR builds (for testing)
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
@@ -247,6 +260,9 @@ deploy:prod:
       when: on_success
     # Allow manual promotion from main branch
     - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"'
+      when: manual
+    # Allow manual promotion from release branches
+    - if: '$CI_COMMIT_BRANCH =~ /^release\//'
       when: manual
   needs:
     - build:package

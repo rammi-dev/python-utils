@@ -188,7 +188,7 @@ from datetime import datetime
 with DAG(
     dag_id="dbt_daily_pipeline",
     start_date=datetime(2024, 1, 1),
-    schedule_interval="0 2 * * *",  # Run at 2 AM daily
+    schedule="0 2 * * *",  # Run at 2 AM daily
     catchup=False,
     tags=["dbt", "daily"],
 ) as dag:
@@ -226,7 +226,7 @@ from datetime import datetime
 with DAG(
     dag_id="dbt_advanced_pipeline",
     start_date=datetime(2024, 1, 1),
-    schedule_interval="@daily",
+    schedule="@daily",
     catchup=False,
 ) as dag:
 
