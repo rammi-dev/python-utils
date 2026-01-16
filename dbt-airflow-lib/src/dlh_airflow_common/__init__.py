@@ -12,6 +12,12 @@ except ImportError:  # pragma: no cover
 
 from dlh_airflow_common.operators.base import BaseOperator
 from dlh_airflow_common.operators.dbt import DbtOperator
+from dlh_airflow_common.validation import (
+    ValidationResult,
+    YamlDagValidator,
+    validate_yaml_directory,
+    validate_yaml_file,
+)
 
 
 def get_dag_description(description: Optional[str] = None) -> str:
@@ -37,4 +43,13 @@ def get_dag_description(description: Optional[str] = None) -> str:
     return version_info
 
 
-__all__ = ["BaseOperator", "DbtOperator", "__version__", "get_dag_description"]
+__all__ = [
+    "BaseOperator",
+    "DbtOperator",
+    "ValidationResult",
+    "YamlDagValidator",
+    "validate_yaml_file",
+    "validate_yaml_directory",
+    "__version__",
+    "get_dag_description",
+]

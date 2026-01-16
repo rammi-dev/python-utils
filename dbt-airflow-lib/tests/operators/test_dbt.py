@@ -4,7 +4,7 @@ import json
 import subprocess
 from pathlib import Path
 from typing import Any, Dict
-from unittest.mock import MagicMock, Mock, call, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 from airflow.exceptions import AirflowException
@@ -118,9 +118,7 @@ class TestDbtOperatorValidation:
         with pytest.raises(AirflowException, match="Virtual environment not found"):
             operator._validate_inputs()
 
-    def test_validate_missing_dbt_executable(
-        self, tmp_path: Path, mock_dbt_project: Path
-    ) -> None:
+    def test_validate_missing_dbt_executable(self, tmp_path: Path, mock_dbt_project: Path) -> None:
         """Test validation fails when dbt executable is missing."""
         venv_path = tmp_path / "venv"
         venv_path.mkdir()
@@ -146,9 +144,7 @@ class TestDbtOperatorValidation:
         with pytest.raises(AirflowException, match="DBT project directory not found"):
             operator._validate_inputs()
 
-    def test_validate_missing_dbt_project_yml(
-        self, mock_venv_path: Path, tmp_path: Path
-    ) -> None:
+    def test_validate_missing_dbt_project_yml(self, mock_venv_path: Path, tmp_path: Path) -> None:
         """Test validation fails when dbt_project.yml is missing."""
         project_path = tmp_path / "project"
         project_path.mkdir()
@@ -162,9 +158,7 @@ class TestDbtOperatorValidation:
         with pytest.raises(AirflowException, match="dbt_project.yml not found"):
             operator._validate_inputs()
 
-    def test_validate_invalid_command(
-        self, mock_venv_path: Path, mock_dbt_project: Path
-    ) -> None:
+    def test_validate_invalid_command(self, mock_venv_path: Path, mock_dbt_project: Path) -> None:
         """Test validation fails for invalid dbt command."""
         operator = DbtOperator(
             task_id="test_dbt",
@@ -176,9 +170,7 @@ class TestDbtOperatorValidation:
         with pytest.raises(AirflowException, match="Invalid dbt command"):
             operator._validate_inputs()
 
-    def test_validate_success(
-        self, mock_venv_path: Path, mock_dbt_project: Path
-    ) -> None:
+    def test_validate_success(self, mock_venv_path: Path, mock_dbt_project: Path) -> None:
         """Test successful validation."""
         operator = DbtOperator(
             task_id="test_dbt",
@@ -193,9 +185,7 @@ class TestDbtOperatorValidation:
 class TestDbtOperatorCommandBuilding:
     """Test suite for DBT command building."""
 
-    def test_build_basic_run_command(
-        self, mock_venv_path: Path, mock_dbt_project: Path
-    ) -> None:
+    def test_build_basic_run_command(self, mock_venv_path: Path, mock_dbt_project: Path) -> None:
         """Test building basic dbt run command."""
         operator = DbtOperator(
             task_id="test_dbt",
@@ -209,9 +199,7 @@ class TestDbtOperatorCommandBuilding:
         assert cmd[0] == str(mock_venv_path / "bin" / "dbt")
         assert cmd[1] == "run"
 
-    def test_build_command_with_tags(
-        self, mock_venv_path: Path, mock_dbt_project: Path
-    ) -> None:
+    def test_build_command_with_tags(self, mock_venv_path: Path, mock_dbt_project: Path) -> None:
         """Test building command with tags."""
         operator = DbtOperator(
             task_id="test_dbt",
@@ -226,9 +214,7 @@ class TestDbtOperatorCommandBuilding:
         assert "tag:daily" in cmd
         assert "tag:core" in cmd
 
-    def test_build_command_with_models(
-        self, mock_venv_path: Path, mock_dbt_project: Path
-    ) -> None:
+    def test_build_command_with_models(self, mock_venv_path: Path, mock_dbt_project: Path) -> None:
         """Test building command with specific models."""
         operator = DbtOperator(
             task_id="test_dbt",
@@ -259,9 +245,7 @@ class TestDbtOperatorCommandBuilding:
         assert "--exclude" in cmd
         assert "tag:exclude_me" in cmd
 
-    def test_build_command_with_target(
-        self, mock_venv_path: Path, mock_dbt_project: Path
-    ) -> None:
+    def test_build_command_with_target(self, mock_venv_path: Path, mock_dbt_project: Path) -> None:
         """Test building command with target."""
         operator = DbtOperator(
             task_id="test_dbt",
@@ -323,9 +307,7 @@ class TestDbtOperatorCommandBuilding:
 
         assert "--fail-fast" in cmd
 
-    def test_build_command_with_vars(
-        self, mock_venv_path: Path, mock_dbt_project: Path
-    ) -> None:
+    def test_build_command_with_vars(self, mock_venv_path: Path, mock_dbt_project: Path) -> None:
         """Test building command with variables."""
         operator = DbtOperator(
             task_id="test_dbt",
@@ -364,9 +346,7 @@ class TestDbtOperatorEnvironment:
     """Test suite for environment preparation."""
 
     @patch.dict("os.environ", {"EXISTING_VAR": "existing"}, clear=True)
-    def test_prepare_environment_basic(
-        self, mock_venv_path: Path, mock_dbt_project: Path
-    ) -> None:
+    def test_prepare_environment_basic(self, mock_venv_path: Path, mock_dbt_project: Path) -> None:
         """Test basic environment preparation."""
         operator = DbtOperator(
             task_id="test_dbt",
@@ -410,9 +390,7 @@ class TestDbtOperatorExecution:
         mock_dbt_project: Path,
     ) -> None:
         """Test successful dbt run execution."""
-        mock_subprocess.return_value = Mock(
-            returncode=0, stdout="Success!", stderr=""
-        )
+        mock_subprocess.return_value = Mock(returncode=0, stdout="Success!", stderr="")
 
         operator = DbtOperator(
             task_id="test_dbt",
@@ -438,9 +416,7 @@ class TestDbtOperatorExecution:
         mock_dbt_project: Path,
     ) -> None:
         """Test successful dbt test execution."""
-        mock_subprocess.return_value = Mock(
-            returncode=0, stdout="All tests passed!", stderr=""
-        )
+        mock_subprocess.return_value = Mock(returncode=0, stdout="All tests passed!", stderr="")
 
         operator = DbtOperator(
             task_id="test_dbt",
@@ -644,9 +620,7 @@ class TestDbtOperatorIntegration:
         operator.execute(context)
 
         # Verify models logging (line 220)
-        models_logged = any(
-            "Models:" in str(call) for call in operator.logger.info.call_args_list
-        )
+        models_logged = any("Models:" in str(call) for call in operator.logger.info.call_args_list)
         assert models_logged, "dbt_models should be logged"
 
         # Verify exclude_tags logging (line 222)

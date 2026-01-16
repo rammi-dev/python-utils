@@ -1,0 +1,27 @@
+etl_pipeline:
+  default_args:
+    owner: data-team
+    start_date: "2024-01-01"
+    retries: 3
+    retry_delay_sec: 300
+  schedule: "0 6 * * *"
+  catchup: false
+  tags:
+    - etl
+    - daily
+  tasks:
+    extract:
+      operator: airflow.operators.python.PythonOperator
+      python_callable_name: run_extract
+
+    transform:
+      operator: airflow.operators.python.PythonOperator
+      python_callable_name: run_transform
+      dependencies:
+        - extract
+
+    load:
+      operator: airflow.operators.python.PythonOperator
+      python_callable_name: run_load
+      dependencies:
+        - transform

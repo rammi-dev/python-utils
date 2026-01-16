@@ -3,9 +3,10 @@
 import os
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Sequence
 
 from airflow.exceptions import AirflowException
+from airflow.utils.context import Context
 
 from dlh_airflow_common.operators.base import BaseOperator
 
@@ -112,9 +113,7 @@ class DbtOperator(BaseOperator):
 
         dbt_project_yml = project_path / "dbt_project.yml"
         if not dbt_project_yml.exists():
-            raise AirflowException(
-                f"dbt_project.yml not found in: {self.dbt_project_dir}"
-            )
+            raise AirflowException(f"dbt_project.yml not found in: {self.dbt_project_dir}")
 
         # Validate command
         valid_commands = ["run", "test"]
@@ -166,6 +165,7 @@ class DbtOperator(BaseOperator):
         # Add variables if specified
         if self.dbt_vars:
             import json
+
             vars_str = json.dumps(self.dbt_vars)
             cmd.extend(["--vars", vars_str])
 
@@ -190,7 +190,7 @@ class DbtOperator(BaseOperator):
 
         return env
 
-    def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, context: Context) -> Dict[str, Any]:
         """Execute the dbt command.
 
         Args:
@@ -274,9 +274,7 @@ class DbtOperator(BaseOperator):
                     if line.strip():
                         self.logger.error(line)
 
-            raise AirflowException(
-                f"DBT {self.dbt_command} failed: {e.stderr or e.stdout}"
-            ) from e
+            raise AirflowException(f"DBT {self.dbt_command} failed: {e.stderr or e.stdout}") from e
 
     def on_kill(self) -> None:
         """Handle task termination.

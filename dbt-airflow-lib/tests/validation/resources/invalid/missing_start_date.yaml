@@ -1,0 +1,8 @@
+# Missing start_date in default_args
+my_dag:
+  default_args:
+    owner: airflow
+  schedule: "@daily"
+  tasks:
+    task_1:
+      operator: BashOperator

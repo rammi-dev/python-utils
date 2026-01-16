@@ -1,0 +1,16 @@
+# DAG using depends_on instead of dependencies
+my_dag:
+  default_args:
+    owner: airflow
+    start_date: "2024-01-01"
+  schedule: "@daily"
+  tasks:
+    task_1:
+      operator: BashOperator
+      bash_command: echo "first"
+
+    task_2:
+      operator: BashOperator
+      bash_command: echo "second"
+      depends_on:
+        - task_1

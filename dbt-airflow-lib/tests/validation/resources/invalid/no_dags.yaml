@@ -1,0 +1,3 @@
+# Only contains default section, no actual DAGs
+default:
+  some: value

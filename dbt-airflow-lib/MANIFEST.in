@@ -1,16 +1,2 @@
-# Include documentation
-include README.md
-include LICENSE
-
-# Include configuration files
-include pyproject.toml
-include tox.ini
-
-# Include type information
-recursive-include src *.py
-recursive-include src *.typed
-
-# Exclude test files from distribution
-recursive-exclude tests *
-recursive-exclude * __pycache__
-recursive-exclude * *.py[co]
+# Include type marker for PEP 561
+include src/dlh_airflow_common/py.typed

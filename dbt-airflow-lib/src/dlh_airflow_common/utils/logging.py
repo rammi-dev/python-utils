@@ -1,7 +1,11 @@
 """Logging utilities for Airflow operators."""
 
+import functools
 import logging
-from typing import Optional
+import time
+from typing import Any, Callable, Optional, TypeVar
+
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 def get_logger(name: str, level: str = "INFO") -> logging.Logger:
@@ -19,16 +23,14 @@ def get_logger(name: str, level: str = "INFO") -> logging.Logger:
 
     if not logger.handlers:
         handler = logging.StreamHandler()
-        formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        )
+        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
         handler.setFormatter(formatter)
         logger.addHandler(handler)
 
     return logger
 
 
-def log_execution_time(logger: Optional[logging.Logger] = None) -> callable:
+def log_execution_time(logger: Optional[logging.Logger] = None) -> Callable[[F], F]:
     """Decorator to log execution time of functions.
 
     Args:
@@ -37,12 +39,10 @@ def log_execution_time(logger: Optional[logging.Logger] = None) -> callable:
     Returns:
         Decorator function
     """
-    import functools
-    import time
 
-    def decorator(func: callable) -> callable:
+    def decorator(func: F) -> F:
         @functools.wraps(func)
-        def wrapper(*args, **kwargs):  # type: ignore
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
             nonlocal logger
             if logger is None:
                 logger = get_logger(func.__module__)
@@ -60,6 +60,6 @@ def log_execution_time(logger: Optional[logging.Logger] = None) -> callable:
                 logger.error(f"Failed {func.__name__} after {elapsed:.2f}s: {e}")
                 raise
 
-        return wrapper
+        return wrapper  # type: ignore[return-value]
 
     return decorator

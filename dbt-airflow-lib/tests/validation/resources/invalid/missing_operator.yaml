@@ -1,0 +1,9 @@
+# Task missing operator field
+my_dag:
+  default_args:
+    owner: airflow
+    start_date: "2024-01-01"
+  schedule: "@daily"
+  tasks:
+    task_1:
+      bash_command: echo hello

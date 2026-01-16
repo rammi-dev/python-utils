@@ -96,7 +96,7 @@ from airflow import DAG
 from dlh_airflow_common.operators.dbt import DbtOperator
 from datetime import datetime
 
-with DAG("dbt_pipeline", start_date=datetime(2024, 1, 1), schedule_interval="@daily") as dag:
+with DAG("dbt_pipeline", start_date=datetime(2024, 1, 1), schedule="@daily") as dag:
 
     dbt_run = DbtOperator(
         task_id="dbt_run_daily",

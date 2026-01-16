@@ -1,0 +1,19 @@
+dag_one:
+  default_args:
+    owner: airflow
+    start_date: "2024-01-01"
+  schedule: "@daily"
+  tasks:
+    task_a:
+      operator: BashOperator
+      bash_command: echo "DAG One"
+
+dag_two:
+  default_args:
+    owner: airflow
+    start_date: "2024-01-01"
+  schedule: "@hourly"
+  tasks:
+    task_b:
+      operator: BashOperator
+      bash_command: echo "DAG Two"

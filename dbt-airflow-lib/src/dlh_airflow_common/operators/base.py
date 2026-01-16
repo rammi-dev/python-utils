@@ -1,8 +1,9 @@
 """Base operator for common functionality."""
 
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from airflow.models import BaseOperator as AirflowBaseOperator
+from airflow.utils.context import Context
 
 from dlh_airflow_common.utils.logging import get_logger
 
@@ -30,7 +31,7 @@ class BaseOperator(AirflowBaseOperator):
         self.log_level = log_level
         self.logger = get_logger(self.__class__.__name__, log_level)
 
-    def execute(self, context: Dict[str, Any]) -> Any:
+    def execute(self, context: Context) -> Any:
         """Execute the operator.
 
         Args:
@@ -44,7 +45,7 @@ class BaseOperator(AirflowBaseOperator):
         """
         raise NotImplementedError("Subclasses must implement execute method")
 
-    def pre_execute(self, context: Dict[str, Any]) -> None:
+    def pre_execute(self, context: Context) -> None:
         """Hook called before execute.
 
         Args:
@@ -52,9 +53,7 @@ class BaseOperator(AirflowBaseOperator):
         """
         self.logger.info(f"Starting execution of task: {self.task_id}")
 
-    def post_execute(
-        self, context: Dict[str, Any], result: Optional[Any] = None
-    ) -> None:
+    def post_execute(self, context: Context, result: Optional[Any] = None) -> None:
         """Hook called after execute.
 
         Args:

@@ -2,8 +2,6 @@
 
 from unittest.mock import patch
 
-import pytest
-
 from dlh_airflow_common import __version__, get_dag_description
 
 
