@@ -12,8 +12,20 @@ NC='\033[0m' # No Color
 
 echo -e "${YELLOW}Running pre-commit checks for dbt-airflow-lib...${NC}"
 
-# Get the project root (where this script is located, minus .githooks)
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Find the dbt-airflow-lib project root
+# This hook may be called from git root in a monorepo, so we need to find the project
+GIT_ROOT="$(git rev-parse --show-toplevel)"
+
+# Check if we're in dbt-airflow-lib subdirectory
+if [ -f "$GIT_ROOT/dbt-airflow-lib/pyproject.toml" ] && [ -d "$GIT_ROOT/dbt-airflow-lib/src/dlh_airflow_common" ]; then
+    PROJECT_ROOT="$GIT_ROOT/dbt-airflow-lib"
+elif [ -f "pyproject.toml" ] && [ -d "src/dlh_airflow_common" ]; then
+    PROJECT_ROOT="$(pwd)"
+else
+    echo -e "${YELLOW}⚠ Skipping pre-commit hook - not a dbt-airflow-lib commit${NC}"
+    exit 0
+fi
+
 cd "$PROJECT_ROOT"
 
 # Function to check if we're in the right directory
@@ -108,8 +120,9 @@ run_type_checking() {
     echo -e "${YELLOW}4. Running type checks...${NC}"
 
     echo "  - Running mypy..."
-    if ! mypy src/ --no-error-summary 2>&1 | grep -v "Success:"; then
+    if ! mypy src/ > /dev/null 2>&1; then
         echo -e "${RED}✗ Type checking failed${NC}"
+        mypy src/  # Show the actual errors
         exit 1
     fi
 
@@ -148,6 +161,14 @@ validate_yaml() {
 
 # Main execution
 main() {
+    # Check if any dbt-airflow-lib files are being committed
+    STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep "^dbt-airflow-lib/" || true)
+
+    if [ -z "$STAGED_FILES" ]; then
+        echo -e "${YELLOW}⚠ No dbt-airflow-lib files in commit, skipping checks${NC}"
+        exit 0
+    fi
+
     check_project_root
 
     # Always clean artifacts
