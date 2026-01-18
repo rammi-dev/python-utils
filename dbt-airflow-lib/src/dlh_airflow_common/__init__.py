@@ -10,6 +10,7 @@ try:
 except ImportError:  # pragma: no cover
     __version__ = "0.0.0.dev0"
 
+from dlh_airflow_common.hooks.dbt import DbtHook, DbtTaskResult
 from dlh_airflow_common.operators.base import BaseOperator
 from dlh_airflow_common.operators.dbt import DbtOperator
 from dlh_airflow_common.validation import (
@@ -20,7 +21,7 @@ from dlh_airflow_common.validation import (
 )
 
 
-def get_dag_description(description: Optional[str] = None) -> str:
+def get_dag_description(description: str | None = None) -> str:
     """Generate a DAG description that includes the library version.
 
     Args:
@@ -46,6 +47,8 @@ def get_dag_description(description: Optional[str] = None) -> str:
 __all__ = [
     "BaseOperator",
     "DbtOperator",
+    "DbtHook",
+    "DbtTaskResult",
     "ValidationResult",
     "YamlDagValidator",
     "validate_yaml_file",

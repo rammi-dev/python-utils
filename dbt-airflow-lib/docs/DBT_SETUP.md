@@ -486,7 +486,8 @@ git pull origin main
 
 ## Additional Resources
 
+- [DAG Factory Usage](DAG_FACTORY_USAGE.md) - YAML-based DAG configuration
+- [UV Setup Guide](UV_SETUP.md) - Fast Python package management
 - [dbt Documentation](https://docs.getdbt.com/)
-- [uv Documentation](https://github.com/astral-sh/uv)
 - [Airflow Documentation](https://airflow.apache.org/docs/)
 - [DBT Best Practices](https://docs.getdbt.com/guides/best-practices)

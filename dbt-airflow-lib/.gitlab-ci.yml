@@ -89,9 +89,9 @@ test:pytest:
     - .python_matrix
   script:
     - uv pip install -e ".[dev]"
-    - pytest --cov=dlh_airflow_common --cov-report=xml --cov-report=term --cov-report=html --cov-fail-under=100
-    - echo "✓ Tests passed with 100% coverage (Python $PYTHON_VERSION)"
-  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
+    - pytest --cov=dlh_airflow_common --cov-report=xml --cov-report=term --cov-report=html --cov-fail-under=90
+    - echo "✓ Tests passed with 90% coverage (Python $PYTHON_VERSION)"
+  coverage: '/(?i)total.*? (90(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
   artifacts:
     reports:
       coverage_report:

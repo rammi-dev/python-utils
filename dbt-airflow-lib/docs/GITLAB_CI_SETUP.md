@@ -461,5 +461,5 @@ git push origin v0.2.0
 
 - [GitLab CI/CD Documentation](https://docs.gitlab.com/ee/ci/)
 - [Semantic Versioning](https://semver.org/)
-- [DEPLOYMENT.md](DEPLOYMENT.md) - Manual deployment guide
-- [UV_SETUP.md](UV_SETUP.md) - uv installation and usage
+- [Deployment Guide](DEPLOYMENT.md) - Manual deployment guide
+- [UV Setup Guide](UV_SETUP.md) - uv installation and usage

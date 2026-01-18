@@ -1,0 +1,24 @@
+# DBT DAG using Airflow Connection for credentials
+# Tests DbtOperator with conn_id instead of profiles_dir
+
+dbt_connection_test:
+  default_args:
+    owner: airflow
+    retries: 1
+  description: "DBT with Airflow Connection integration test"
+  schedule: "@daily"
+  start_date: 2024-01-01
+  catchup: false
+  tags:
+    - dbt
+    - connection-based
+
+  tasks:
+    dbt_run_with_conn:
+      operator: dlh_airflow_common.operators.dbt.DbtOperator
+      venv_path: "{{ var.value.get('venv_path', '/opt/venv') }}"
+      dbt_project_dir: "{{ var.value.get('dbt_project_dir', '/opt/dbt/project') }}"
+      conn_id: dbt_duckdb_conn
+      dbt_command: run
+      push_artifacts: true
+      target: dev

@@ -1,0 +1,19 @@
+# Simple DBT DAG using dag-factory
+# Tests basic DbtOperator integration with DAG Factory
+
+dbt_simple_test:
+  default_args:
+    owner: airflow
+    retries: 1
+  description: "Integration test DAG for DbtOperator with dag-factory"
+  schedule: "@daily"
+  start_date: 2024-01-01
+  catchup: false
+
+  tasks:
+    dbt_run:
+      operator: dlh_airflow_common.operators.dbt.DbtOperator
+      venv_path: "{{ var.value.get('venv_path', '/opt/venv') }}"
+      dbt_project_dir: "{{ var.value.get('dbt_project_dir', '/opt/dbt/project') }}"
+      dbt_command: run
+      profiles_dir: "{{ var.value.get('profiles_dir', '/opt/dbt/profiles') }}"

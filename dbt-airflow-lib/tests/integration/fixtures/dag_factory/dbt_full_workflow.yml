@@ -1,0 +1,44 @@
+# Full DBT workflow DAG using dag-factory
+# Tests complete dbt workflow: seed -> run -> test
+
+dbt_full_workflow_test:
+  default_args:
+    owner: airflow
+    retries: 1
+    retry_delay_sec: 30
+  description: "Full DBT workflow integration test with dag-factory"
+  schedule: "@daily"
+  start_date: 2024-01-01
+  catchup: false
+  tags:
+    - dbt
+    - integration-test
+
+  tasks:
+    dbt_seed:
+      operator: dlh_airflow_common.operators.dbt.DbtOperator
+      venv_path: "{{ var.value.get('venv_path', '/opt/venv') }}"
+      dbt_project_dir: "{{ var.value.get('dbt_project_dir', '/opt/dbt/project') }}"
+      dbt_command: seed
+      profiles_dir: "{{ var.value.get('profiles_dir', '/opt/dbt/profiles') }}"
+      push_artifacts: false
+
+    dbt_run:
+      operator: dlh_airflow_common.operators.dbt.DbtOperator
+      venv_path: "{{ var.value.get('venv_path', '/opt/venv') }}"
+      dbt_project_dir: "{{ var.value.get('dbt_project_dir', '/opt/dbt/project') }}"
+      dbt_command: run
+      profiles_dir: "{{ var.value.get('profiles_dir', '/opt/dbt/profiles') }}"
+      push_artifacts: true
+      dependencies:
+        - dbt_seed
+
+    dbt_test:
+      operator: dlh_airflow_common.operators.dbt.DbtOperator
+      venv_path: "{{ var.value.get('venv_path', '/opt/venv') }}"
+      dbt_project_dir: "{{ var.value.get('dbt_project_dir', '/opt/dbt/project') }}"
+      dbt_command: test
+      profiles_dir: "{{ var.value.get('profiles_dir', '/opt/dbt/profiles') }}"
+      push_artifacts: false
+      dependencies:
+        - dbt_run

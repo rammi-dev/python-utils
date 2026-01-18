@@ -1,6 +1,6 @@
 """Tests for base operator."""
 
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -11,7 +11,7 @@ from dlh_airflow_common.operators.base import BaseOperator
 class ConcreteOperator(BaseOperator):
     """Concrete implementation for testing."""
 
-    def execute(self, context: Dict[str, Any]) -> str:
+    def execute(self, context: dict[str, Any]) -> str:
         """Execute the operator."""
         return "success"
 
@@ -37,7 +37,7 @@ class TestBaseOperator:
         mock_get_logger.return_value = mock_logger
 
         operator = ConcreteOperator(task_id="test_task")
-        context: Dict[str, Any] = {"task_instance": MagicMock()}
+        context: dict[str, Any] = {"task_instance": MagicMock()}
 
         operator.pre_execute(context)
         result = operator.execute(context)
@@ -49,7 +49,7 @@ class TestBaseOperator:
     def test_base_execute_not_implemented(self) -> None:
         """Test that base execute raises NotImplementedError."""
         operator = BaseOperator(task_id="test_task")
-        context: Dict[str, Any] = {}
+        context: dict[str, Any] = {}
 
         with pytest.raises(NotImplementedError):
             operator.execute(context)
@@ -58,7 +58,7 @@ class TestBaseOperator:
         """Test pre_execute logging."""
         operator = ConcreteOperator(task_id="test_task")
         operator.logger = MagicMock()
-        context: Dict[str, Any] = {}
+        context: dict[str, Any] = {}
 
         operator.pre_execute(context)
         operator.logger.info.assert_called_once()
@@ -67,7 +67,7 @@ class TestBaseOperator:
         """Test post_execute logging."""
         operator = ConcreteOperator(task_id="test_task")
         operator.logger = MagicMock()
-        context: Dict[str, Any] = {}
+        context: dict[str, Any] = {}
 
         operator.post_execute(context, "result")
         operator.logger.info.assert_called_once()

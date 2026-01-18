@@ -1,6 +1,6 @@
 """Base operator for common functionality."""
 
-from typing import Any, Optional
+from typing import Any
 
 from airflow.models import BaseOperator as AirflowBaseOperator
 from airflow.utils.context import Context
@@ -53,7 +53,7 @@ class BaseOperator(AirflowBaseOperator):
         """
         self.logger.info(f"Starting execution of task: {self.task_id}")
 
-    def post_execute(self, context: Context, result: Optional[Any] = None) -> None:
+    def post_execute(self, context: Context, result: Any | None = None) -> None:
         """Hook called after execute.
 
         Args:

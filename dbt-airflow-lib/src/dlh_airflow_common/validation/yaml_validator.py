@@ -6,7 +6,7 @@ used with dag-factory. It validates both YAML syntax and DAG structure.
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any
 
 import yaml
 
@@ -24,8 +24,8 @@ class ValidationResult:
 
     is_valid: bool
     file_path: str
-    errors: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
     def __str__(self) -> str:
         """Return a formatted string representation."""
@@ -56,22 +56,22 @@ class YamlDagValidator:
     """
 
     # Required fields for DAG configuration
-    REQUIRED_DAG_FIELDS: Set[str] = {"default_args", "schedule"}
+    REQUIRED_DAG_FIELDS: set[str] = {"default_args", "schedule"}
 
     # Required fields in default_args
-    REQUIRED_DEFAULT_ARGS: Set[str] = {"owner", "start_date"}
+    REQUIRED_DEFAULT_ARGS: set[str] = {"owner", "start_date"}
 
     # Required fields for task configuration
-    REQUIRED_TASK_FIELDS: Set[str] = {"operator"}
+    REQUIRED_TASK_FIELDS: set[str] = {"operator"}
 
     # Valid task dependency keys
-    DEPENDENCY_KEYS: Set[str] = {"dependencies", "depends_on"}
+    DEPENDENCY_KEYS: set[str] = {"dependencies", "depends_on"}
 
     def __init__(
         self,
-        required_dag_fields: Optional[Set[str]] = None,
-        required_default_args: Optional[Set[str]] = None,
-        required_task_fields: Optional[Set[str]] = None,
+        required_dag_fields: set[str] | None = None,
+        required_default_args: set[str] | None = None,
+        required_task_fields: set[str] | None = None,
     ) -> None:
         """Initialize the validator with optional custom requirements.
 
@@ -92,7 +92,7 @@ class YamlDagValidator:
             required_task_fields if required_task_fields is not None else self.REQUIRED_TASK_FIELDS
         )
 
-    def validate_yaml_syntax(self, file_path: Union[str, Path]) -> ValidationResult:
+    def validate_yaml_syntax(self, file_path: str | Path) -> ValidationResult:
         """Validate YAML syntax of a file.
 
         Args:
@@ -102,7 +102,7 @@ class YamlDagValidator:
             ValidationResult with syntax validation status
         """
         file_path = Path(file_path)
-        errors: List[str] = []
+        errors: list[str] = []
 
         try:
             with open(file_path, encoding="utf-8") as f:
@@ -121,7 +121,7 @@ class YamlDagValidator:
         )
 
     def validate_dag_structure(
-        self, config: Dict[str, Any], file_path: str = "<unknown>"
+        self, config: dict[str, Any], file_path: str = "<unknown>"
     ) -> ValidationResult:
         """Validate DAG structure and required fields.
 
@@ -132,8 +132,8 @@ class YamlDagValidator:
         Returns:
             ValidationResult with structure validation status
         """
-        errors: List[str] = []
-        warnings: List[str] = []
+        errors: list[str] = []
+        warnings: list[str] = []
 
         if not isinstance(config, dict):
             errors.append("Configuration must be a dictionary")
@@ -164,8 +164,8 @@ class YamlDagValidator:
         )
 
     def _validate_single_dag(
-        self, dag_name: str, dag_config: Dict[str, Any]
-    ) -> tuple[List[str], List[str]]:
+        self, dag_name: str, dag_config: dict[str, Any]
+    ) -> tuple[list[str], list[str]]:
         """Validate a single DAG configuration.
 
         Args:
@@ -175,8 +175,8 @@ class YamlDagValidator:
         Returns:
             Tuple of (errors, warnings) lists
         """
-        errors: List[str] = []
-        warnings: List[str] = []
+        errors: list[str] = []
+        warnings: list[str] = []
 
         if not isinstance(dag_config, dict):
             errors.append(f"DAG '{dag_name}': Configuration must be a dictionary")
@@ -213,7 +213,7 @@ class YamlDagValidator:
 
         return errors, warnings
 
-    def _validate_tasks(self, dag_name: str, tasks: Dict[str, Any]) -> tuple[List[str], List[str]]:
+    def _validate_tasks(self, dag_name: str, tasks: dict[str, Any]) -> tuple[list[str], list[str]]:
         """Validate task configurations.
 
         Args:
@@ -223,8 +223,8 @@ class YamlDagValidator:
         Returns:
             Tuple of (errors, warnings) lists
         """
-        errors: List[str] = []
-        warnings: List[str] = []
+        errors: list[str] = []
+        warnings: list[str] = []
         task_names = set(tasks.keys())
 
         for task_name, task_config in tasks.items():
@@ -261,7 +261,7 @@ class YamlDagValidator:
 
         return errors, warnings
 
-    def validate_file(self, file_path: Union[str, Path]) -> ValidationResult:
+    def validate_file(self, file_path: str | Path) -> ValidationResult:
         """Validate a YAML file for both syntax and DAG structure.
 
         Args:
@@ -299,10 +299,10 @@ class YamlDagValidator:
 
     def validate_directory(
         self,
-        directory: Union[str, Path],
+        directory: str | Path,
         pattern: str = "*.yaml",
         recursive: bool = True,
-    ) -> List[ValidationResult]:
+    ) -> list[ValidationResult]:
         """Validate all YAML files in a directory.
 
         Args:
@@ -314,7 +314,7 @@ class YamlDagValidator:
             List of ValidationResult objects for each file
         """
         directory = Path(directory)
-        results: List[ValidationResult] = []
+        results: list[ValidationResult] = []
 
         if not directory.exists():
             return [
@@ -358,7 +358,7 @@ class YamlDagValidator:
         return results
 
 
-def validate_yaml_file(file_path: Union[str, Path]) -> ValidationResult:
+def validate_yaml_file(file_path: str | Path) -> ValidationResult:
     """Convenience function to validate a single YAML file.
 
     Args:
@@ -372,10 +372,10 @@ def validate_yaml_file(file_path: Union[str, Path]) -> ValidationResult:
 
 
 def validate_yaml_directory(
-    directory: Union[str, Path],
+    directory: str | Path,
     pattern: str = "*.yaml",
     recursive: bool = True,
-) -> List[ValidationResult]:
+) -> list[ValidationResult]:
     """Convenience function to validate all YAML files in a directory.
 
     Args:

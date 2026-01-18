@@ -219,10 +219,11 @@ test:
   run: pytest
 ```
 
-## Resources
+## Additional Resources
 
-- [UV_SETUP.md](UV_SETUP.md) - Complete uv setup guide
-- [DBT_SETUP.md](DBT_SETUP.md) - DBT operator setup with Python 3.11
+- [UV Setup Guide](UV_SETUP.md) - Complete uv setup guide
+- [DBT Setup Guide](DBT_SETUP.md) - DBT operator setup with Python 3.11
+- [Python Version File](PYTHON_VERSION_FILE.md) - Understanding `.python-version`
 - [uv documentation](https://github.com/astral-sh/uv)
 - [Python 3.11 docs](https://docs.python.org/3.11/)
 

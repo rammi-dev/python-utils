@@ -11,7 +11,6 @@ Usage:
 import argparse
 import sys
 from pathlib import Path
-from typing import List, Optional
 
 from dlh_airflow_common.validation.yaml_validator import (
     ValidationResult,
@@ -19,7 +18,7 @@ from dlh_airflow_common.validation.yaml_validator import (
 )
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     """Main entry point for the CLI.
 
     Args:
@@ -81,7 +80,7 @@ Examples:
     args = parser.parse_args(argv)
 
     validator = YamlDagValidator()
-    results: List[ValidationResult] = []
+    results: list[ValidationResult] = []
 
     path = args.path
 

@@ -102,6 +102,7 @@ with DAG("dbt_pipeline", start_date=datetime(2024, 1, 1), schedule="@daily") as 
         task_id="dbt_run_daily",
         venv_path="/opt/airflow/venvs/dbt-venv",
         dbt_project_dir="/opt/airflow/dbt/my_project",
+        conn_id="dbt_postgres_prod",  # Use Airflow connection
         dbt_command="run",
         dbt_tags=["daily"],
         target="prod",
@@ -111,6 +112,7 @@ with DAG("dbt_pipeline", start_date=datetime(2024, 1, 1), schedule="@daily") as 
         task_id="dbt_test_daily",
         venv_path="/opt/airflow/venvs/dbt-venv",
         dbt_project_dir="/opt/airflow/dbt/my_project",
+        conn_id="dbt_postgres_prod",
         dbt_command="test",
         dbt_tags=["daily"],
         fail_fast=True,
@@ -120,7 +122,7 @@ with DAG("dbt_pipeline", start_date=datetime(2024, 1, 1), schedule="@daily") as 
     dbt_run >> dbt_test
 ```
 
-For detailed DBT setup, see [DBT_SETUP.md](DBT_SETUP.md).
+For detailed DBT setup, see [DBT_SETUP.md](DBT_SETUP.md) and [DAG_FACTORY_USAGE.md](DAG_FACTORY_USAGE.md).
 
 ## Project Structure
 
@@ -128,50 +130,49 @@ For detailed DBT setup, see [DBT_SETUP.md](DBT_SETUP.md).
 dlh-airflow-common/
 ├── src/dlh_airflow_common/     # Source code
 │   ├── operators/              # Custom operators (base, dbt)
-│   └── utils/                  # Utilities
-├── tests/                      # Test suite
+│   ├── hooks/                  # Airflow hooks
+│   ├── utils/                  # Utilities
+│   └── validation/             # YAML validation
+├── tests/                      # Test suite (99.65% coverage)
+├── docs/                       # Documentation
 ├── pyproject.toml              # Project configuration
-├── tox.ini                     # Tox configuration
 ├── Makefile                    # Convenience commands
-├── README.md                   # Full documentation
-├── DBT_SETUP.md                # DBT operator guide
-└── DEPLOYMENT.md               # Deployment guide
+└── .python-version             # Python 3.11
 ```
 
-## Creating Your First Operator
+## Using with dag-factory
 
-1. Create a new file in `src/dlh_airflow_common/operators/`:
+Create YAML configuration for your DAGs:
 
-```python
-from typing import Any, Dict
-from dlh_airflow_common.operators.base import BaseOperator
+```yaml
+# dags/dbt_pipeline.yml
+dbt_daily_pipeline:
+  default_args:
+    owner: 'data_team'
+    start_date: '2024-01-01'
+    retries: 2
 
+  schedule: '@daily'
+  catchup: false
 
-class MyOperator(BaseOperator):
-    def __init__(self, task_id: str, my_param: str, **kwargs: Any) -> None:
-        super().__init__(task_id=task_id, **kwargs)
-        self.my_param = my_param
-
-    def execute(self, context: Dict[str, Any]) -> Any:
-        self.logger.info(f"Running with: {self.my_param}")
-        return "success"
+  tasks:
+    dbt_run:
+      operator: dlh_airflow_common.operators.dbt.DbtOperator
+      venv_path: '/opt/airflow/venvs/dbt-venv'
+      dbt_project_dir: '/opt/airflow/dbt/analytics'
+      conn_id: 'dbt_postgres_prod'
+      dbt_command: 'run'
+      dbt_tags: ['daily']
+      target: 'prod'
 ```
 
-2. Add to `src/dlh_airflow_common/operators/__init__.py`:
-
-```python
-from dlh_airflow_common.operators.my_operator import MyOperator
-
-__all__ = ["BaseOperator", "MyOperator"]
-```
-
-3. Write tests in `tests/operators/test_my_operator.py`
-
-4. Run quality checks:
+Validate your YAML:
 
 ```bash
-make all
+validate-dags dags/
 ```
+
+See [DAG_FACTORY_USAGE.md](DAG_FACTORY_USAGE.md) for complete guide.
 
 ## Common Tasks
 
@@ -215,10 +216,10 @@ export TWINE_REPOSITORY_URL=https://nexus.example.com/repository/pypi-private/
 
 ## Next Steps
 
-- Read [README.md](README.md) for detailed documentation
+- Read [README.md](../README.md) for detailed documentation
+- Check [DBT_SETUP.md](DBT_SETUP.md) for DBT operator setup
+- Review [DAG_FACTORY_USAGE.md](DAG_FACTORY_USAGE.md) for YAML-based DAGs
 - Check [DEPLOYMENT.md](DEPLOYMENT.md) for deployment instructions
-- Review example operators in `src/dlh_airflow_common/operators/`
-- Customize configuration in `pyproject.toml`
 
 ## Getting Help
 

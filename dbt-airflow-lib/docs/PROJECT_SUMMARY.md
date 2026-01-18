@@ -15,58 +15,64 @@ dlh-airflow-common/
 │   ├── __init__.py                   # Package initialization
 │   ├── py.typed                      # PEP 561 type marker
 │   ├── operators/                    # Custom Airflow operators
-│   │   ├── __init__.py
-│   │   └── base.py                   # Base operator with common functionality
-│   └── utils/                        # Utility functions
-│       ├── __init__.py
-│       └── logging.py                # Logging utilities
+│   │   ├── base.py                   # Base operator
+│   │   └── dbt.py                    # DBT operator
+│   ├── hooks/                        # Airflow hooks
+│   │   ├── dbt.py                    # DBT hook
+│   │   └── dbt_profiles.py           # Profile adapters
+│   ├── utils/                        # Utility functions
+│   │   └── logging.py                # Logging utilities
+│   └── validation/                   # YAML validation
+│       ├── yaml_validator.py         # Validator class
+│       └── cli.py                    # CLI tool
 │
-├── tests/                            # Test suite
-│   ├── __init__.py
-│   ├── operators/
-│   │   ├── __init__.py
-│   │   └── test_base.py              # Tests for base operator
-│   └── utils/
-│       ├── __init__.py
-│       └── test_logging.py           # Tests for logging utilities
+├── tests/                            # Test suite (154 tests, 99.65% coverage)
+│   ├── operators/                    # Operator tests
+│   ├── hooks/                        # Hook tests
+│   ├── utils/                        # Utility tests
+│   └── validation/                   # Validation tests
+│
+├── docs/                             # Documentation
+│   ├── CHANGELOG.md
+│   ├── DEPLOYMENT.md
+│   ├── DBT_SETUP.md
+│   ├── QUICKSTART.md
+│   └── ...
 │
 ├── pyproject.toml                    # Project configuration & dependencies
 ├── tox.ini                           # Tox multi-environment testing config
 ├── Makefile                          # Convenience commands
-├── .gitignore                        # Git ignore patterns
 ├── .gitlab-ci.yml                    # GitLab CI/CD pipeline
-├── .pypirc.example                   # Example Nexus configuration
-├── MANIFEST.in                       # Package manifest
-├── LICENSE                           # MIT License
-│
-├── README.md                         # Main documentation
-├── DEPLOYMENT.md                     # Deployment guide for Nexus
-├── QUICKSTART.md                     # Quick start guide
-├── PROJECT_SUMMARY.md                # This file
-└── verify_setup.sh                   # Setup verification script
+└── .python-version                   # Python 3.11
 ```
 
 ## Key Features
 
-### 1. Base Operator
-- **Location:** [src/dlh_airflow_common/operators/base.py](src/dlh_airflow_common/operators/base.py)
-- Extends Airflow's BaseOperator
-- Standardized logging with configurable levels
-- Pre/post execution hooks
-- Type-safe implementation
+### 1. DbtOperator
+- **Location:** `src/dlh_airflow_common/operators/dbt.py`
+- Execute dbt commands in virtual environments
+- Support for run, test, build, compile, seed, snapshot
+- Tag-based and model-based filtering
+- Airflow connection-based credential management
 
-### 2. Logging Utilities
-- **Location:** [src/dlh_airflow_common/utils/logging.py](src/dlh_airflow_common/utils/logging.py)
-- Configured logger factory
-- Execution time decorator
-- Standardized formatting
+### 2. DbtHook
+- **Location:** `src/dlh_airflow_common/hooks/dbt.py`
+- Manages dbt execution environment
+- Converts Airflow connections to dbt profiles
+- Uses dbt Python API (dbtRunner)
+- Supports multiple database adapters
 
-### 3. Testing
+### 3. YAML DAG Validation
+- **Location:** `src/dlh_airflow_common/validation/`
+- Validates dag-factory YAML configurations
+- CLI tool: `validate-dags`
+- Integration with CI/CD pipelines
+
+### 4. Testing
 - **Framework:** pytest
-- **Coverage:** pytest-cov with HTML and XML reports
-- **Location:** [tests/](tests/)
+- **Coverage:** 99.65% (574/576 lines)
+- **Tests:** 154 passing
 - Comprehensive unit tests for all components
-- Mock-based testing for Airflow dependencies
 
 ### 4. Code Quality
 - **Linting:** ruff (modern, fast linter)
@@ -105,7 +111,9 @@ Convenience commands for common operations:
 ## Dependencies
 
 ### Core
-- `apache-airflow>=2.5.0` - Airflow framework
+- `apache-airflow>=3.1.0` - Airflow framework
+- `dbt-core>=1.8.0` - dbt Python API
+- `pyyaml` - YAML parsing
 
 ### Development
 - `pytest>=7.0.0` - Testing framework
@@ -206,35 +214,39 @@ Required environment variables:
 ## Usage Example
 
 ```python
-from dlh_airflow_common.operators.base import BaseOperator
+from dlh_airflow_common.operators.dbt import DbtOperator
 from airflow import DAG
 from datetime import datetime
 
-class MyOperator(BaseOperator):
-    def execute(self, context):
-        self.logger.info("Executing custom logic")
-        return "success"
-
-with DAG("my_dag", start_date=datetime(2024, 1, 1)) as dag:
-    task = MyOperator(task_id="my_task")
+with DAG("dbt_pipeline", start_date=datetime(2024, 1, 1), schedule="@daily") as dag:
+    dbt_run = DbtOperator(
+        task_id="dbt_run_daily",
+        venv_path="/opt/airflow/venvs/dbt-venv",
+        dbt_project_dir="/opt/airflow/dbt/my_project",
+        conn_id="dbt_postgres_prod",
+        dbt_command="run",
+        dbt_tags=["daily"],
+        target="prod",
+    )
 ```
 
 ## Future Enhancements
 
 Potential additions:
-- More operator types (HTTP, Database, Cloud)
-- Connection management utilities
-- Data validation helpers
-- Retry and error handling patterns
-- Monitoring and alerting integrations
-- Documentation site (Sphinx/MkDocs)
+- Integration tests with real dbt execution
+- Additional database adapters (Snowflake, BigQuery)
+- Performance optimization (profiles.yml caching)
+- Enhanced monitoring and metrics
+- Circuit breaker pattern for failing connections
+- Documentation site (MkDocs)
 
 ## Documentation
 
-- **[README.md](README.md)** - Comprehensive project documentation
+- **[README.md](../README.md)** - Comprehensive project documentation
 - **[QUICKSTART.md](QUICKSTART.md)** - Quick start guide
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** - Detailed deployment instructions
-- **[.pypirc.example](.pypirc.example)** - Nexus configuration template
+- **[DBT_SETUP.md](DBT_SETUP.md)** - DBT operator setup guide
+- **[DAG_FACTORY_USAGE.md](DAG_FACTORY_USAGE.md)** - dag-factory integration
 - **Inline docs** - All code includes docstrings and type hints
 
 ## Support & Maintenance
@@ -254,9 +266,10 @@ For questions or support, contact the DLH team or open an issue on the repositor
 
 ---
 
-**Generated:** 2024-01-15
-**Status:** Ready for development and deployment
-**Python Support:** 3.8, 3.9, 3.10, 3.11 (recommended), 3.12
-**Python Recommended:** 3.11
-**Airflow Support:** >=3.1.0
+**Last Updated:** 2026-01-17
+**Status:** Production-ready (99.65% test coverage)
+**Python Support:** 3.10, 3.11 (recommended), 3.12, 3.13
+**Python Development:** 3.11 (see `.python-version`)
+**Airflow Support:** >=3.1.0, <4.0.0
 **Package Manager:** uv (recommended) or pip
+**Test Coverage:** 99.65% (574/576 lines covered)

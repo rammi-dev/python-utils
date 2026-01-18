@@ -4,7 +4,7 @@ This guide explains how to deploy the `dlh-airflow-common` package to a private 
 
 ## Prerequisites
 
-1. Python 3.11 (recommended) or 3.8+
+1. Python 3.11 (recommended) or 3.10+
 2. [uv](https://github.com/astral-sh/uv) installed (recommended) or pip
 3. Access to your Nexus repository
 4. Nexus credentials (username and password)
@@ -27,7 +27,7 @@ uv pip install twine
 
 ### 1. Configure Nexus Repository
 
-Create or update your ` ` file with Nexus credentials:
+Create or update your `~/.pypirc` file with Nexus credentials:
 
 ```ini
 [distutils]

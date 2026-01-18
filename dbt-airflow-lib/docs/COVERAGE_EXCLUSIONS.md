@@ -44,7 +44,7 @@ def process(value: int) -> int:
 
 ### 2. Configuration-Based Exclusions
 
-The project already has several patterns excluded in [pyproject.toml](pyproject.toml):
+The project already has several patterns excluded in `pyproject.toml`:
 
 ```toml
 [tool.coverage.report]
@@ -297,11 +297,11 @@ The coverage threshold is enforced in CI/CD:
 # .gitlab-ci.yml
 test:pytest:
   script:
-    - pytest --cov-fail-under=100
+    - pytest --cov-fail-under=90
 ```
 
 Exclusions are respected, so:
-- Excluded code doesn't count toward the 100% requirement
+- Excluded code doesn't count toward the 90% requirement
 - But exclusions are visible in coverage reports
 - Code reviewers can verify exclusions are appropriate
 

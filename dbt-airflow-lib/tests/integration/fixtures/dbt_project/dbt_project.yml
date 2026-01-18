@@ -1,0 +1,11 @@
+name: test_integration_project
+version: 1.0.0
+profile: test_integration
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+target-path: "target"
+
+models:
+  test_integration_project:
+    +materialized: table

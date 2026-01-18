@@ -3,7 +3,8 @@
 import functools
 import logging
 import time
-from typing import Any, Callable, Optional, TypeVar
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -30,7 +31,7 @@ def get_logger(name: str, level: str = "INFO") -> logging.Logger:
     return logger
 
 
-def log_execution_time(logger: Optional[logging.Logger] = None) -> Callable[[F], F]:
+def log_execution_time(logger: logging.Logger | None = None) -> Callable[[F], F]:
     """Decorator to log execution time of functions.
 
     Args:

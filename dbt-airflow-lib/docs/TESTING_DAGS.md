@@ -1,6 +1,8 @@
-# Testing DAGs Without Airflow
+# Testing DAGs Guide
 
 This guide explains how to test your DAGs and operators without running a full Airflow environment.
+
+> **Note**: For comprehensive test coverage examples, see [TEST_IMPROVEMENTS_SUMMARY.md](TEST_IMPROVEMENTS_SUMMARY.md) which documents the project's 99.65% test coverage achievement.
 
 ## Testing Approaches
 

@@ -227,7 +227,7 @@ pip install -e ".[dev]"
 ### Running Tests
 
 ```bash
-# Run all tests
+# Run unit tests (integration tests skipped by default)
 pytest
 
 # Run with coverage
@@ -244,6 +244,28 @@ make test           # Quick test run
 make test-cov       # Test with coverage reports
 make coverage       # Test with coverage + open HTML report
 ```
+
+#### Integration Tests
+
+Integration tests execute real dbt commands using DuckDB (in-memory database):
+
+```bash
+# Install integration test dependencies
+pip install -e ".[integration]"
+# Or with uv
+uv pip install -e ".[integration]"
+
+# Run integration tests only
+pytest -m integration
+
+# Run all tests (unit + integration)
+pytest -m ""
+
+# Using tox
+tox -e integration
+```
+
+**Note**: Integration tests are skipped by default to keep unit tests fast. They run actual dbt execution and take longer (~10-15 seconds).
 
 For testing DAGs without running Airflow, see [TESTING_DAGS.md](TESTING_DAGS.md).
 

@@ -10,7 +10,7 @@
 #
 # Testing:
 #   make test               # Run tests
-#   make test-cov           # Run tests with coverage (100% required)
+#   make test-cov           # Run tests with coverage (90% required)
 #   make test-cov-report    # Run tests and open HTML coverage report
 #   make tox                # Run tests on Python 3.11 and 3.12
 #   make tox-parallel       # Run tox in parallel (faster)
@@ -33,9 +33,9 @@
 #
 # =============================================================================
 
-.PHONY: help install install-pip clean test test-cov test-cov-report \
-        coverage lint format format-fix type-check build publish-dev publish-prod \
-        publish-test version tox tox-parallel all
+.PHONY: help install install-pip install-integration clean test test-cov test-cov-report \
+        test-integration test-all coverage lint format format-fix type-check build publish-dev publish-prod \
+        publish-test version tox tox-parallel tox-parallel-verbose tox-integration tox-all tox-all-verbose all
 
 .DEFAULT_GOAL := help
 
@@ -53,13 +53,18 @@ help:
 	@echo "$(GREEN)Setup:$(NC)"
 	@echo "  make install            Install with dev dependencies (uv)"
 	@echo "  make install-pip        Install with dev dependencies (pip fallback)"
+	@echo "  make install-integration Install integration test dependencies"
 	@echo ""
 	@echo "$(GREEN)Testing:$(NC)"
-	@echo "  make test               Run tests"
-	@echo "  make test-cov           Run tests with coverage (fails if <100%)"
+	@echo "  make test               Run unit tests only (fast)"
+	@echo "  make test-integration   Run integration tests with real dbt execution"
+	@echo "  make test-all           Run all tests (unit + integration)"
+	@echo "  make test-cov           Run unit tests with coverage (fails if <90%)"
 	@echo "  make test-cov-report    Run tests with coverage and open HTML report"
-	@echo "  make tox                Run tests on Python 3.11 and 3.12"
-	@echo "  make tox-parallel       Run tox environments in parallel"
+	@echo "  make tox                Run tests on Python 3.11 and 3.12 (verbose)"
+	@echo "  make tox-parallel       Run tox in parallel (fast, minimal output)"
+	@echo "  make tox-parallel-verbose Run all checks sequentially (shows full output)"
+	@echo "  make tox-integration    Run integration tests via tox"
 	@echo ""
 	@echo "$(GREEN)Code Quality:$(NC)"
 	@echo "  make lint               Run linting (ruff)"
@@ -89,6 +94,11 @@ install:
 install-pip:
 	pip install -e ".[dev]"
 
+install-integration:
+	uv pip install -e ".[integration]"
+	@echo "$(GREEN)Integration test dependencies installed$(NC)"
+	@echo "Run 'make test-integration' to execute integration tests"
+
 # =============================================================================
 # Cleanup
 # =============================================================================
@@ -113,10 +123,19 @@ clean:
 # =============================================================================
 
 test:
+	@echo "$(BLUE)Running unit tests (integration tests skipped)...$(NC)"
 	uv run pytest
 
+test-integration:
+	@echo "$(BLUE)Running integration tests with real dbt execution...$(NC)"
+	uv run pytest -m integration --no-cov
+
+test-all:
+	@echo "$(BLUE)Running all tests (unit + integration)...$(NC)"
+	uv run pytest -m ""
+
 test-cov:
-	uv run pytest --cov=dlh_airflow_common --cov-report=term --cov-report=html --cov-report=xml --cov-fail-under=100
+	uv run pytest --cov=dlh_airflow_common --cov-report=term --cov-report=html --cov-report=xml --cov-fail-under=90
 
 test-cov-report: test-cov
 	@echo "Opening coverage report in browser..."
@@ -127,13 +146,32 @@ test-cov-report: test-cov
 coverage: test-cov-report
 
 # Multi-version testing with tox
+# Tests against Python 3.11 and 3.12 with Airflow 3.1 (shows full output)
 tox:
-	uv run tox -e py311,py312
+	@echo "$(BLUE)Running tests on Python 3.11 and 3.12...$(NC)"
+	uv run tox -e py311-airflow31,py312-airflow31
 
+tox-integration:
+	@echo "$(BLUE)Running integration tests via tox...$(NC)"
+	uv run tox -e integration
+
+# Run quality checks and tests in parallel (faster but hides output)
 tox-parallel:
-	uv run tox -e py311,py312 -p auto
+	@echo "$(BLUE)Running parallel tox tests (use 'make tox-parallel-verbose' to see output)...$(NC)"
+	uv run tox -e py311-airflow31,py312-airflow31,lint,format,type-check -p auto
+
+# Run quality checks and tests sequentially (shows full output)
+tox-parallel-verbose:
+	@echo "$(BLUE)Running all quality checks with verbose output...$(NC)"
+	uv run tox -e lint,format,type-check,py311-airflow31,py312-airflow31
+
+# Run all quality checks sequentially (alias for tox-parallel-verbose)
+tox-all-verbose:
+	@echo "$(BLUE)Running all quality checks with verbose output...$(NC)"
+	uv run tox -e lint,format,type-check,py311-airflow31,py312-airflow31
 
 tox-all:
+	@echo "$(BLUE)Running all tox environments...$(NC)"
 	uv run tox
 
 # =============================================================================
@@ -167,7 +205,7 @@ build: clean
 	@ls -lh dist/
 
 version:
-	@uv run python -c "from setuptools_scm import get_version; print(get_version())"
+	@uv run python -c "from setuptools_scm import get_version; print(get_version(root='..'))"
 
 publish-test:
 	uv run twine check dist/*

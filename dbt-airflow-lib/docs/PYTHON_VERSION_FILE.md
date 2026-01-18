@@ -441,6 +441,7 @@ python --version
 
 ## Additional Resources
 
+- [Python Version Strategy](PYTHON_VERSION_STRATEGY.md) - Multi-version library strategy
+- [UV Setup Guide](UV_SETUP.md) - Using uv with Python versions
 - [pyenv .python-version](https://github.com/pyenv/pyenv#choosing-the-python-version)
 - [uv Python version management](https://docs.astral.sh/uv/concepts/python-versions/)
-- [PEP 582 - Python local packages directory](https://peps.python.org/pep-0582/)

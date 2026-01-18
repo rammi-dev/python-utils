@@ -49,6 +49,9 @@ coverage.xml
 .pytest_cache/
 cover/
 
+# Add JSON coverage report
+coverage.json
+
 # Translations
 *.mo
 *.pot
