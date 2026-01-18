@@ -102,7 +102,7 @@ with DAG("dbt_pipeline", start_date=datetime(2024, 1, 1), schedule="@daily") as 
         task_id="dbt_run_daily",
         venv_path="/opt/airflow/venvs/dbt-venv",
         dbt_project_dir="/opt/airflow/dbt/my_project",
-        conn_id="dbt_postgres_prod",  # Use Airflow connection
+        conn_id="dbt_dremio_prod",  # Use Airflow connection
         dbt_command="run",
         dbt_tags=["daily"],
         target="prod",
@@ -112,7 +112,7 @@ with DAG("dbt_pipeline", start_date=datetime(2024, 1, 1), schedule="@daily") as 
         task_id="dbt_test_daily",
         venv_path="/opt/airflow/venvs/dbt-venv",
         dbt_project_dir="/opt/airflow/dbt/my_project",
-        conn_id="dbt_postgres_prod",
+        conn_id="dbt_dremio_prod",
         dbt_command="test",
         dbt_tags=["daily"],
         fail_fast=True,
@@ -160,7 +160,7 @@ dbt_daily_pipeline:
       operator: dlh_airflow_common.operators.dbt.DbtOperator
       venv_path: '/opt/airflow/venvs/dbt-venv'
       dbt_project_dir: '/opt/airflow/dbt/analytics'
-      conn_id: 'dbt_postgres_prod'
+      conn_id: 'dbt_dremio_prod'
       dbt_command: 'run'
       dbt_tags: ['daily']
       target: 'prod'

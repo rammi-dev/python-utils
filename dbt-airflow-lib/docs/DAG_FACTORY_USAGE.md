@@ -1,6 +1,8 @@
 # Using DbtOperator with dag-factory
 
-This guide shows how to use `DbtOperator` with [dag-factory](https://github.com/ajbosco/dag-factory) for YAML-based DAG generation.
+This guide shows how to use `DbtOperator` with [dag-factory](https://github.com/astronomer/dag-factory) (Astronomer) for YAML-based DAG generation.
+
+**Note**: For production deployment examples, see `tests/integration/fixtures/dag_factory/README.md`.
 
 ## Overview
 
@@ -19,7 +21,7 @@ The `DbtOperator` integrates seamlessly with dag-factory, allowing you to:
 │  │ tasks:                                                     │  │
 │  │   dbt_run:                                                 │  │
 │  │     operator: DbtOperator                                  │  │
-│  │     conn_id: "dbt_postgres_prod"  ← References connection │  │
+│  │     conn_id: "dbt_dremio_prod"  ← References connection   │  │
 │  └───────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
                               │
@@ -27,9 +29,9 @@ The `DbtOperator` integrates seamlessly with dag-factory, allowing you to:
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Airflow Connections                          │
 │  ┌───────────────────────────────────────────────────────────┐  │
-│  │ Connection ID: dbt_postgres_prod                          │  │
-│  │ Type: postgres                                             │  │
-│  │ Host: prod-db.example.com                                  │  │
+│  │ Connection ID: dbt_dremio_prod                            │  │
+│  │ Type: generic (for Dremio)                                 │  │
+│  │ Host: dremio.example.com                                   │  │
 │  │ Credentials: (stored securely in Airflow)                 │  │
 │  └───────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
@@ -75,17 +77,7 @@ pip install dlh-airflow-common[dremio,spark]  # Include your dbt adapters
 #### Via Airflow CLI
 
 ```bash
-# Postgres/Redshift connection
-airflow connections add dbt_postgres_prod \
-    --conn-type postgres \
-    --conn-host prod-db.example.com \
-    --conn-schema analytics \
-    --conn-login dbt_user \
-    --conn-password <password> \
-    --conn-port 5432 \
-    --conn-extra '{"threads": 8, "keepalives_idle": 0}'
-
-# Dremio connection (software)
+# Dremio connection (on-premises)
 airflow connections add dbt_dremio_prod \
     --conn-type generic \
     --conn-host dremio.example.com \
@@ -93,7 +85,7 @@ airflow connections add dbt_dremio_prod \
     --conn-login dbt_user \
     --conn-password <password> \
     --conn-port 9047 \
-    --conn-extra '{"use_ssl": true, "threads": 4}'
+    --conn-extra '{"use_ssl": true, "threads": 4, "dremio_space_folder": "analytics"}'
 
 # Spark/Databricks connection
 airflow connections add dbt_databricks_prod \
@@ -132,7 +124,7 @@ dbt_analytics_pipeline:
       venv_path: '/opt/airflow/venvs/dbt-venv'
       dbt_project_dir: '/opt/airflow/dbt/analytics'
       dbt_command: 'run'
-      conn_id: 'dbt_postgres_prod'  # Reference to Airflow Connection
+      conn_id: 'dbt_dremio_prod'  # Reference to Airflow Connection
       dbt_tags:
         - 'daily'
       target: 'prod'
@@ -141,71 +133,26 @@ dbt_analytics_pipeline:
 
 ### 4. Load DAGs with dag-factory
 
-```python
-# dags/dag_factory_loader.py
-from dagfactory import load_yaml_dags
+Create a loader script at `dags/load_dags.py`:
 
-# Load all YAML files from dags directory
-load_yaml_dags(globals_dict=globals(), dags_folder="dags")
+```python
+# dags/load_dags.py
+from dagfactory import load_yaml_dags
+from pathlib import Path
+
+# Load all YAML configs from dags directory
+dag_dir = Path(__file__).parent.resolve()
+for yaml_file in dag_dir.glob("*.yml"):
+    load_yaml_dags(globals(), config_filepath=str(yaml_file.resolve()))
 ```
+
+**Important**:
+- Use absolute paths (`.resolve()`) for `config_filepath`
+- This is required by dag-factory for proper file resolution
 
 ## Connection Examples
 
-### PostgreSQL / Redshift
-
-**Airflow Connection**:
-```yaml
-Connection ID: dbt_postgres_prod
-Connection Type: Postgres
-Host: prod-db.example.com
-Schema: analytics          # Database name
-Login: dbt_user
-Password: ****
-Port: 5432
-Extra: {
-  "threads": 8,
-  "keepalives_idle": 0,
-  "sslmode": "require",
-  "schema": "public"       # dbt schema (default: public)
-}
-```
-
-**How DbtHook Converts It**:
-```python
-# DbtHook uses PostgresProfileAdapter to convert to:
-{
-    "type": "postgres",
-    "host": "prod-db.example.com",
-    "user": "dbt_user",
-    "password": "****",
-    "database": "analytics",      # From conn.schema
-    "port": 5432,
-    "schema": "public",           # dbt schema from extra
-    "threads": 8,
-    "keepalives_idle": 0,
-    "sslmode": "require"
-}
-```
-
-**Generated profiles.yml** (temporary, created by DbtHook):
-```yaml
-analytics:  # From dbt_project.yml
-  target: prod
-  outputs:
-    prod:
-      type: postgres
-      host: prod-db.example.com
-      user: dbt_user
-      password: ****
-      database: analytics
-      port: 5432
-      schema: public
-      threads: 8
-      keepalives_idle: 0
-      sslmode: require
-```
-
-### Dremio (Software)
+### Dremio (On-premises)
 
 **Airflow Connection**:
 ```yaml
@@ -240,7 +187,25 @@ Extra: {
 }
 ```
 
-**Note**: Only Dremio on-premises (software) is currently supported. Dremio Cloud support may be added in future releases.
+**Generated profiles.yml** (temporary, created by DbtHook):
+```yaml
+analytics:  # From dbt_project.yml
+  target: prod
+  outputs:
+    prod:
+      type: dremio
+      software_host: dremio.example.com
+      port: 9047
+      user: dbt_user
+      password: ****
+      database: my_catalog
+      dremio_space: my_catalog
+      dremio_space_folder: analytics
+      use_ssl: true
+      threads: 4
+```
+
+**Note**: Only Dremio on-premises (software) is currently supported. Dremio Cloud support has been removed.
 
 ### Spark (Thrift)
 
@@ -320,7 +285,8 @@ When `DbtOperator` executes, it creates a `DbtHook` which performs the following
 ```python
 # DbtHook._setup_dbt_environment()
 # Modifies sys.path to import dbt from the venv
-sys.path.insert(0, f"{venv_path}/lib/python3.11/site-packages")
+python_version = f"{sys.version_info.major}.{sys.version_info.minor}"  # e.g., "3.11" or "3.12"
+sys.path.insert(0, f"{venv_path}/lib/python{python_version}/site-packages")
 ```
 
 ### Step 2: Load Connection & Generate Profile
@@ -419,7 +385,7 @@ dbt_multi_stage_pipeline:
       operator: dlh_airflow_common.operators.dbt.DbtOperator
       venv_path: '/opt/airflow/venvs/dbt-venv'
       dbt_project_dir: '/opt/airflow/dbt/analytics'
-      conn_id: 'dbt_postgres_prod'
+      conn_id: 'dbt_dremio_prod'
       dbt_command: 'run'
       dbt_tags: ['staging']
       target: 'prod'
@@ -429,7 +395,7 @@ dbt_multi_stage_pipeline:
       operator: dlh_airflow_common.operators.dbt.DbtOperator
       venv_path: '/opt/airflow/venvs/dbt-venv'
       dbt_project_dir: '/opt/airflow/dbt/analytics'
-      conn_id: 'dbt_postgres_prod'
+      conn_id: 'dbt_dremio_prod'
       dbt_command: 'run'
       dbt_tags: ['intermediate']
       target: 'prod'
@@ -441,7 +407,7 @@ dbt_multi_stage_pipeline:
       operator: dlh_airflow_common.operators.dbt.DbtOperator
       venv_path: '/opt/airflow/venvs/dbt-venv'
       dbt_project_dir: '/opt/airflow/dbt/analytics'
-      conn_id: 'dbt_postgres_prod'
+      conn_id: 'dbt_dremio_prod'
       dbt_command: 'run'
       dbt_tags: ['marts']
       target: 'prod'
@@ -454,7 +420,7 @@ dbt_multi_stage_pipeline:
       operator: dlh_airflow_common.operators.dbt.DbtOperator
       venv_path: '/opt/airflow/venvs/dbt-venv'
       dbt_project_dir: '/opt/airflow/dbt/analytics'
-      conn_id: 'dbt_postgres_prod'
+      conn_id: 'dbt_dremio_prod'
       dbt_command: 'test'
       target: 'prod'
       fail_fast: false
@@ -478,7 +444,7 @@ dbt_dev_pipeline:
       operator: dlh_airflow_common.operators.dbt.DbtOperator
       venv_path: '/opt/airflow/venvs/dbt-venv'
       dbt_project_dir: '/opt/airflow/dbt/analytics'
-      conn_id: 'dbt_postgres_dev'  # Dev connection
+      conn_id: 'dbt_dremio_dev'  # Dev connection
       dbt_command: 'run'
       target: 'dev'
       dbt_tags: ['daily']
@@ -496,7 +462,7 @@ dbt_prod_pipeline:
       operator: dlh_airflow_common.operators.dbt.DbtOperator
       venv_path: '/opt/airflow/venvs/dbt-venv'
       dbt_project_dir: '/opt/airflow/dbt/analytics'
-      conn_id: 'dbt_postgres_prod'  # Prod connection
+      conn_id: 'dbt_dremio_prod'  # Prod connection
       dbt_command: 'run'
       target: 'prod'
       dbt_tags: ['daily']
@@ -530,7 +496,7 @@ dbt_templated_pipeline:
 
 Set variables:
 ```bash
-airflow variables set dbt_conn_id "dbt_postgres_prod"
+airflow variables set dbt_conn_id "dbt_dremio_prod"
 airflow variables set env "prod"
 airflow variables set dbt_venv_path "/opt/airflow/venvs/dbt-venv"
 airflow variables set dbt_project_dir "/opt/airflow/dbt/analytics"
@@ -576,12 +542,12 @@ dbt_legacy_pipeline:
 
 ### Connection not found
 ```
-Error: Connection 'dbt_postgres_prod' not found
+Error: Connection 'dbt_dremio_prod' not found
 ```
 **Solution**: Create the connection in Airflow:
 ```bash
 airflow connections list  # Check existing connections
-airflow connections add dbt_postgres_prod ...
+airflow connections add dbt_dremio_prod ...
 ```
 
 ### Missing venv
@@ -592,7 +558,7 @@ Error: Virtual environment not found at: /opt/airflow/venvs/dbt-venv
 ```bash
 python -m venv /opt/airflow/venvs/dbt-venv
 source /opt/airflow/venvs/dbt-venv/bin/activate
-pip install dbt-core dbt-postgres  # or dbt-spark, dbt-dremio
+pip install dbt-core dbt-dremio  # or dbt-spark for Databricks
 ```
 
 ### Missing dbt_project.yml
@@ -601,8 +567,22 @@ Error: dbt_project.yml not found at: /opt/airflow/dbt/analytics/dbt_project.yml
 ```
 **Solution**: Ensure your dbt project is in the correct location and initialized.
 
+## Testing
+
+For integration tests showing dag-factory + DbtOperator in action:
+```bash
+# Install integration dependencies
+uv pip install -e ".[integration]"
+
+# Run dag-factory integration tests
+pytest -m integration tests/integration/test_dag_factory_integration.py -v
+```
+
+These tests use Airflow's DagBag to verify DAGs load correctly from YAML configs.
+
 ## Additional Resources
 
-- [dag-factory Documentation](https://github.com/ajbosco/dag-factory)
-- [Airflow Connections](https://airflow.apache.org/docs/apache-airflow/stable/howto/connection.html)
+- [dag-factory Documentation](https://github.com/astronomer/dag-factory) (Astronomer)
+- [Airflow 3.1 Connections](https://airflow.apache.org/docs/apache-airflow/3.1.0/howto/connection.html)
 - [dbt Documentation](https://docs.getdbt.com/)
+- [Production Deployment Guide](tests/integration/fixtures/dag_factory/README.md)

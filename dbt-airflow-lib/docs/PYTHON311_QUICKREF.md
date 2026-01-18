@@ -56,7 +56,7 @@ uv venv dbt-venv --python 3.11
 source dbt-venv/bin/activate
 
 # Install dbt
-uv pip install dbt-core dbt-postgres
+uv pip install dbt-core dbt-dremio
 
 # Verify
 python --version  # 3.11.x

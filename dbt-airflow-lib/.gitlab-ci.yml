@@ -79,7 +79,7 @@ test:type-check:
   variables:
     PYTHON_VERSION: "3.11"
   script:
-    - uv pip install mypy apache-airflow
+    - uv pip install mypy apache-airflow types-PyYAML
     - mypy src/
     - echo "✓ Type checking passed"
 
@@ -140,9 +140,9 @@ build:package:
       # Fetch all tags for setuptools-scm
       git fetch --tags --unshallow || git fetch --tags
 
-      # Show current version (from setuptools-scm)
+      # Show current version (from setuptools-scm with parent directory support)
       uv pip install setuptools-scm
-      VERSION=$(python -c "from setuptools_scm import get_version; print(get_version())")
+      VERSION=$(python -c "from setuptools_scm import get_version; print(get_version(root='..'))")
       echo "Building version: $VERSION"
 
       # Install build dependencies

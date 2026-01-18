@@ -13,20 +13,28 @@ class DbtOperator(BaseOperator):
     """
     Operator to run dbt commands using dbt's programmatic Python API.
 
-    This operator executes dbt commands (run, test) via the DbtHook, which uses
-    dbt's dbtRunner API for direct Python integration. Supports two profile modes:
+    This operator executes dbt commands via the DbtHook, which uses dbt's dbtRunner
+    API for direct Python integration. Supports two profile modes:
     1. Airflow Connection (recommended): Centralized credential management via conn_id
     2. Manual profiles.yml: Traditional dbt profiles file via profiles_dir
+
+    Supported Commands:
+        - run: Execute dbt models
+        - test: Run dbt tests
+        - snapshot: Execute snapshot models
+        - seed: Load seed data
+        - compile: Compile dbt project
+        - deps: Install dbt dependencies
 
     Args:
         task_id: Unique task identifier
         venv_path: Path to the virtual environment with dbt-core installed
         dbt_project_dir: Path to the dbt project directory
-        dbt_command: DBT command to execute ('run' or 'test')
-        conn_id: Airflow connection ID for dbt profile (NEW - recommended)
-        dbt_tags: List of tags to filter dbt models (optional)
-        dbt_models: List of specific models to run (optional)
-        exclude_tags: List of tags to exclude (optional)
+        dbt_command: DBT command to execute (run, test, snapshot, seed, compile, deps)
+        conn_id: Airflow connection ID for dbt profile (recommended)
+        dbt_tags: List of tags to filter dbt models (optional, not used for deps)
+        dbt_models: List of specific models to run (optional, not used for deps)
+        exclude_tags: List of tags to exclude (optional, not used for deps)
         dbt_vars: Dictionary of variables to pass to dbt (optional)
         full_refresh: Whether to perform a full refresh (default: False)
         fail_fast: Stop on first test failure (default: False)
@@ -36,27 +44,36 @@ class DbtOperator(BaseOperator):
         push_artifacts: Push manifest and run_results to XCom (default: True)
         **kwargs: Additional arguments passed to BaseOperator
 
-    Example (with Airflow Connection):
+    Example (run with Airflow Connection):
         >>> dbt_run = DbtOperator(
         ...     task_id='dbt_run_daily',
         ...     venv_path='/opt/airflow/venvs/dbt-venv',
         ...     dbt_project_dir='/opt/airflow/dbt/my_project',
         ...     dbt_command='run',
-        ...     conn_id='dbt_postgres_prod',  # NEW: Use Airflow Connection
+        ...     conn_id='dbt_dremio_prod',
         ...     dbt_tags=['daily', 'core'],
         ...     target='prod',
-        ...     push_artifacts=True,  # NEW: Push to XCom
+        ...     push_artifacts=True,
         ... )
 
-    Example (with manual profiles.yml - backward compatible):
-        >>> dbt_test = DbtOperator(
-        ...     task_id='dbt_test',
+    Example (seed data):
+        >>> dbt_seed = DbtOperator(
+        ...     task_id='dbt_seed',
         ...     venv_path='/opt/airflow/venvs/dbt-venv',
         ...     dbt_project_dir='/opt/airflow/dbt/my_project',
-        ...     dbt_command='test',
-        ...     profiles_dir='/opt/airflow/dbt/profiles',  # OLD WAY
-        ...     dbt_models=['my_model'],
+        ...     dbt_command='seed',
+        ...     conn_id='dbt_dremio_prod',
         ...     target='dev',
+        ... )
+
+    Example (snapshot):
+        >>> dbt_snapshot = DbtOperator(
+        ...     task_id='dbt_snapshot',
+        ...     venv_path='/opt/airflow/venvs/dbt-venv',
+        ...     dbt_project_dir='/opt/airflow/dbt/my_project',
+        ...     dbt_command='snapshot',
+        ...     conn_id='dbt_dremio_prod',
+        ...     target='prod',
         ... )
     """
 
@@ -76,7 +93,7 @@ class DbtOperator(BaseOperator):
         task_id: str,
         venv_path: str,
         dbt_project_dir: str,
-        dbt_command: Literal["run", "test"] = "run",
+        dbt_command: Literal["run", "test", "snapshot", "seed", "compile", "deps"] = "run",
         conn_id: str | None = None,  # NEW
         dbt_tags: list[str] | None = None,
         dbt_models: list[str] | None = None,

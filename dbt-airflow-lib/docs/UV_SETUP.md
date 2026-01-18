@@ -171,7 +171,7 @@ Once in a virtual environment (or using uv directly):
 uv pip install dbt-core
 
 # Install multiple packages
-uv pip install dbt-core dbt-postgres dbt-snowflake
+uv pip install dbt-core dbt-dremio dbt-spark
 
 # Install from requirements.txt
 uv pip install -r requirements.txt
@@ -185,11 +185,11 @@ uv pip install -e ".[dev]"
 
 ```bash
 # Traditional pip (slow)
-time pip install dbt-core dbt-postgres
+time pip install dbt-core dbt-dremio
 # Takes: 20-60 seconds
 
 # With uv (fast!)
-time uv pip install dbt-core dbt-postgres
+time uv pip install dbt-core dbt-dremio
 # Takes: 2-5 seconds
 ```
 
@@ -245,7 +245,7 @@ uv venv dbt-venv --python 3.11
 
 # 5. Install dbt
 source dbt-venv/bin/activate
-uv pip install dbt-core dbt-postgres
+uv pip install dbt-core dbt-dremio
 
 # 6. Verify
 python --version

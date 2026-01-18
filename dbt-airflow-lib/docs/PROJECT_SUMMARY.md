@@ -82,8 +82,8 @@ dlh-airflow-common/
 
 ### 5. Multi-Environment Testing
 - **Tool:** tox
-- **Environments:** Python 3.8, 3.9, 3.10, 3.11, 3.12
-- **Commands:** lint, format, type-check, test, build
+- **Environments:** Python 3.11, 3.12 × Airflow 3.1
+- **Commands:** lint, format, type-check, test, build, integration
 - **Configuration:** [tox.ini](tox.ini)
 
 ## Configuration Files
@@ -97,9 +97,9 @@ Modern Python project configuration including:
 
 ### tox.ini
 Multi-environment testing configuration:
-- Python version matrix (3.8-3.12)
+- Python version matrix (3.11-3.12) × Airflow 3.1
 - Separate environments for lint, format, type-check, tests
-- Build and coverage environments
+- Build, coverage, and integration test environments
 
 ### Makefile
 Convenience commands for common operations:
@@ -223,7 +223,7 @@ with DAG("dbt_pipeline", start_date=datetime(2024, 1, 1), schedule="@daily") as 
         task_id="dbt_run_daily",
         venv_path="/opt/airflow/venvs/dbt-venv",
         dbt_project_dir="/opt/airflow/dbt/my_project",
-        conn_id="dbt_postgres_prod",
+        conn_id="dbt_dremio_prod",
         dbt_command="run",
         dbt_tags=["daily"],
         target="prod",

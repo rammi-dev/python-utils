@@ -67,7 +67,7 @@ source dbt-venv/bin/activate
 python --version  # Should show Python 3.11.x
 
 # Install dbt-core and adapters using uv
-uv pip install dbt-core dbt-postgres dbt-snowflake dbt-bigquery
+uv pip install dbt-core dbt-dremio dbt-spark
 
 # Verify installation
 dbt --version
@@ -96,7 +96,7 @@ python -m venv /opt/airflow/venvs/dbt-venv
 source /opt/airflow/venvs/dbt-venv/bin/activate
 
 # Install dbt
-pip install dbt-core dbt-postgres
+pip install dbt-core dbt-dremio
 
 # Verify
 dbt --version
@@ -129,23 +129,26 @@ my_project:
   target: prod
   outputs:
     dev:
-      type: postgres
-      host: localhost
-      port: 5432
+      type: dremio
+      software_host: dremio-dev.example.com
+      port: 9047
       user: dev_user
-      pass: "{{ env_var('DBT_DEV_PASSWORD') }}"
-      dbname: dev_db
-      schema: dev_schema
+      password: "{{ env_var('DBT_DEV_PASSWORD') }}"
+      database: dev_catalog
+      dremio_space: dev_catalog
+      use_ssl: true
       threads: 4
 
     prod:
-      type: postgres
-      host: prod-db.example.com
-      port: 5432
+      type: dremio
+      software_host: dremio.example.com
+      port: 9047
       user: prod_user
-      pass: "{{ env_var('DBT_PROD_PASSWORD') }}"
-      dbname: prod_db
-      schema: prod_schema
+      password: "{{ env_var('DBT_PROD_PASSWORD') }}"
+      database: prod_catalog
+      dremio_space: prod_catalog
+      dremio_space_folder: analytics
+      use_ssl: true
       threads: 8
 ```
 
