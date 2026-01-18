@@ -582,3 +582,284 @@ class TestConvenienceFunctions:
         results = validate_yaml_directory(VALID_DIR)
         assert len(results) > 0
         assert all(r.is_valid for r in results)
+
+
+class TestDagFactoryIntegration:
+    """Tests for dag-factory specific validation scenarios."""
+
+    @pytest.fixture
+    def validator(self) -> YamlDagValidator:
+        """Create a validator instance."""
+        return YamlDagValidator()
+
+    def test_dbt_operator_with_conn_id(self, validator: YamlDagValidator) -> None:
+        """Test validation of DbtOperator with conn_id parameter."""
+        config = {
+            "dbt_with_connection": {
+                "default_args": {
+                    "owner": "airflow",
+                    "start_date": "2024-01-01",
+                },
+                "schedule": "@daily",
+                "tasks": {
+                    "dbt_run": {
+                        "operator": "dlh_airflow_common.operators.dbt.DbtOperator",
+                        "venv_path": "/opt/venv",
+                        "dbt_project_dir": "/opt/dbt/project",
+                        "dbt_command": "run",
+                        "conn_id": "dbt_dremio_prod",
+                        "target": "prod",
+                    }
+                },
+            }
+        }
+
+        result = validator.validate_dag_structure(config, "dbt_conn.yaml")
+        assert result.is_valid
+        assert len(result.errors) == 0
+
+    def test_dbt_operator_all_commands(self, validator: YamlDagValidator) -> None:
+        """Test validation of all supported dbt commands."""
+        commands = ["run", "test", "snapshot", "seed", "compile", "deps"]
+
+        for cmd in commands:
+            config = {
+                f"dbt_{cmd}_dag": {
+                    "default_args": {
+                        "owner": "airflow",
+                        "start_date": "2024-01-01",
+                    },
+                    "schedule": "@daily",
+                    "tasks": {
+                        f"dbt_{cmd}": {
+                            "operator": "dlh_airflow_common.operators.dbt.DbtOperator",
+                            "venv_path": "/opt/venv",
+                            "dbt_project_dir": "/opt/dbt/project",
+                            "dbt_command": cmd,
+                            "conn_id": "dbt_dremio_prod",
+                        }
+                    },
+                }
+            }
+
+            result = validator.validate_dag_structure(config, f"dbt_{cmd}.yaml")
+            assert result.is_valid, f"Command '{cmd}' should be valid"
+
+    def test_dbt_workflow_with_dependencies(self, validator: YamlDagValidator) -> None:
+        """Test validation of full dbt workflow with dependencies."""
+        config = {
+            "dbt_full_workflow": {
+                "default_args": {
+                    "owner": "airflow",
+                    "start_date": "2024-01-01",
+                },
+                "schedule": "@daily",
+                "tasks": {
+                    "dbt_seed": {
+                        "operator": "dlh_airflow_common.operators.dbt.DbtOperator",
+                        "venv_path": "/opt/venv",
+                        "dbt_project_dir": "/opt/dbt/project",
+                        "dbt_command": "seed",
+                        "conn_id": "dbt_dremio_prod",
+                    },
+                    "dbt_run": {
+                        "operator": "dlh_airflow_common.operators.dbt.DbtOperator",
+                        "venv_path": "/opt/venv",
+                        "dbt_project_dir": "/opt/dbt/project",
+                        "dbt_command": "run",
+                        "conn_id": "dbt_dremio_prod",
+                        "dependencies": ["dbt_seed"],
+                    },
+                    "dbt_test": {
+                        "operator": "dlh_airflow_common.operators.dbt.DbtOperator",
+                        "venv_path": "/opt/venv",
+                        "dbt_project_dir": "/opt/dbt/project",
+                        "dbt_command": "test",
+                        "conn_id": "dbt_dremio_prod",
+                        "dependencies": ["dbt_run"],
+                    },
+                },
+            }
+        }
+
+        result = validator.validate_dag_structure(config, "dbt_workflow.yaml")
+        assert result.is_valid
+        assert len(result.errors) == 0
+
+    def test_dbt_operator_with_tags(self, validator: YamlDagValidator) -> None:
+        """Test validation of DbtOperator with dbt_tags parameter."""
+        config = {
+            "dbt_tagged_run": {
+                "default_args": {
+                    "owner": "airflow",
+                    "start_date": "2024-01-01",
+                },
+                "schedule": "@daily",
+                "tasks": {
+                    "dbt_run_daily": {
+                        "operator": "dlh_airflow_common.operators.dbt.DbtOperator",
+                        "venv_path": "/opt/venv",
+                        "dbt_project_dir": "/opt/dbt/project",
+                        "dbt_command": "run",
+                        "conn_id": "dbt_dremio_prod",
+                        "dbt_tags": ["daily", "core"],
+                        "target": "prod",
+                    }
+                },
+            }
+        }
+
+        result = validator.validate_dag_structure(config, "dbt_tags.yaml")
+        assert result.is_valid
+
+    def test_dbt_operator_with_jinja_templates(self, validator: YamlDagValidator) -> None:
+        """Test validation of DbtOperator with Jinja2 templating."""
+        config = {
+            "dbt_templated": {
+                "default_args": {
+                    "owner": "airflow",
+                    "start_date": "2024-01-01",
+                },
+                "schedule": "@daily",
+                "tasks": {
+                    "dbt_run": {
+                        "operator": "dlh_airflow_common.operators.dbt.DbtOperator",
+                        "venv_path": "{{ var.value.get('venv_path', '/opt/venv') }}",
+                        "dbt_project_dir": "{{ var.value.get('dbt_project_dir', '/opt/dbt') }}",
+                        "dbt_command": "run",
+                        "conn_id": "{{ var.value.get('dbt_conn_id', 'dbt_dremio_prod') }}",
+                        "target": "{{ var.value.get('env', 'prod') }}",
+                    }
+                },
+            }
+        }
+
+        result = validator.validate_dag_structure(config, "dbt_jinja.yaml")
+        assert result.is_valid
+
+    def test_dbt_operator_with_all_parameters(self, validator: YamlDagValidator) -> None:
+        """Test validation of DbtOperator with all possible parameters."""
+        config = {
+            "dbt_full_params": {
+                "default_args": {
+                    "owner": "airflow",
+                    "start_date": "2024-01-01",
+                },
+                "schedule": "@daily",
+                "tasks": {
+                    "dbt_run_complete": {
+                        "operator": "dlh_airflow_common.operators.dbt.DbtOperator",
+                        "venv_path": "/opt/venv",
+                        "dbt_project_dir": "/opt/dbt/project",
+                        "dbt_command": "run",
+                        "conn_id": "dbt_dremio_prod",
+                        "dbt_tags": ["daily"],
+                        "dbt_models": ["model1", "model2"],
+                        "exclude_tags": ["deprecated"],
+                        "dbt_vars": {"run_date": "{{ ds }}"},
+                        "full_refresh": True,
+                        "fail_fast": False,
+                        "target": "prod",
+                        "push_artifacts": True,
+                        "env_vars": {"DBT_ENV": "prod"},
+                    }
+                },
+            }
+        }
+
+        result = validator.validate_dag_structure(config, "dbt_all_params.yaml")
+        assert result.is_valid
+
+    def test_dbt_multi_stage_pipeline(self, validator: YamlDagValidator) -> None:
+        """Test validation of multi-stage dbt pipeline."""
+        config = {
+            "dbt_multi_stage": {
+                "default_args": {
+                    "owner": "data_engineering",
+                    "start_date": "2024-01-01",
+                },
+                "schedule": "0 2 * * *",
+                "catchup": False,
+                "tasks": {
+                    "dbt_staging": {
+                        "operator": "dlh_airflow_common.operators.dbt.DbtOperator",
+                        "venv_path": "/opt/venv",
+                        "dbt_project_dir": "/opt/dbt/project",
+                        "dbt_command": "run",
+                        "conn_id": "dbt_dremio_prod",
+                        "dbt_tags": ["staging"],
+                    },
+                    "dbt_intermediate": {
+                        "operator": "dlh_airflow_common.operators.dbt.DbtOperator",
+                        "venv_path": "/opt/venv",
+                        "dbt_project_dir": "/opt/dbt/project",
+                        "dbt_command": "run",
+                        "conn_id": "dbt_dremio_prod",
+                        "dbt_tags": ["intermediate"],
+                        "dependencies": ["dbt_staging"],
+                    },
+                    "dbt_marts": {
+                        "operator": "dlh_airflow_common.operators.dbt.DbtOperator",
+                        "venv_path": "/opt/venv",
+                        "dbt_project_dir": "/opt/dbt/project",
+                        "dbt_command": "run",
+                        "conn_id": "dbt_dremio_prod",
+                        "dbt_tags": ["marts"],
+                        "dependencies": ["dbt_intermediate"],
+                    },
+                    "dbt_test": {
+                        "operator": "dlh_airflow_common.operators.dbt.DbtOperator",
+                        "venv_path": "/opt/venv",
+                        "dbt_project_dir": "/opt/dbt/project",
+                        "dbt_command": "test",
+                        "conn_id": "dbt_dremio_prod",
+                        "fail_fast": False,
+                        "dependencies": ["dbt_marts"],
+                    },
+                },
+            }
+        }
+
+        result = validator.validate_dag_structure(config, "dbt_multi_stage.yaml")
+        assert result.is_valid
+        assert len(result.errors) == 0
+
+    def test_dbt_operator_backward_compatibility(self, validator: YamlDagValidator) -> None:
+        """Test validation of DbtOperator with profiles_dir (backward compatible)."""
+        config = {
+            "dbt_legacy": {
+                "default_args": {
+                    "owner": "airflow",
+                    "start_date": "2024-01-01",
+                },
+                "schedule": "@daily",
+                "tasks": {
+                    "dbt_run": {
+                        "operator": "dlh_airflow_common.operators.dbt.DbtOperator",
+                        "venv_path": "/opt/venv",
+                        "dbt_project_dir": "/opt/dbt/project",
+                        "dbt_command": "run",
+                        "profiles_dir": "/opt/dbt/profiles",
+                        "target": "dev",
+                    }
+                },
+            }
+        }
+
+        result = validator.validate_dag_structure(config, "dbt_legacy.yaml")
+        assert result.is_valid
+
+    def test_validate_actual_dag_factory_fixtures(self, validator: YamlDagValidator) -> None:
+        """Test validation of actual dag-factory fixture files."""
+        fixtures_dir = Path(__file__).parent.parent / "integration" / "fixtures" / "dag_factory"
+
+        if not fixtures_dir.exists():
+            # Skip if integration fixtures don't exist
+            return
+
+        yaml_files = list(fixtures_dir.glob("*.yml")) + list(fixtures_dir.glob("*.yaml"))
+
+        for yaml_file in yaml_files:
+            if yaml_file.name != "README.md":
+                result = validator.validate_file(yaml_file)
+                assert result.is_valid, f"{yaml_file.name} should be valid: {result.errors}"

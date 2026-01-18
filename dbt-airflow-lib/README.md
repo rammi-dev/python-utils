@@ -267,6 +267,9 @@ python --version  # Should show Python 3.11.x
 
 # Install development dependencies (10x faster than pip)
 uv pip install -e ".[dev]"
+
+# Install git hooks for automatic cleanup and quality checks
+bash .githooks/install.sh
 ```
 
 #### Option 2: Using pip
@@ -281,7 +284,37 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install development dependencies
 pip install -e ".[dev]"
+
+# Install git hooks for automatic cleanup and quality checks
+bash .githooks/install.sh
 ```
+
+### Git Hooks
+
+The project includes pre-commit hooks that automatically clean build artifacts and run quality checks before each commit:
+
+```bash
+# Install the hooks (do this once after cloning)
+bash .githooks/install.sh
+```
+
+**What the pre-commit hook does:**
+- Cleans all build artifacts (`__pycache__`, `.pyc`, coverage files, etc.)
+- Runs `black` and `ruff` formatters
+- Runs linting with `ruff`
+- Runs type checking with `mypy`
+- Runs unit tests (integration tests skipped for speed)
+
+**Bypass the hook when needed:**
+```bash
+# For quick commits
+git commit --no-verify -m "Quick fix"
+
+# Or skip only quality checks (still cleans)
+SKIP_PRE_COMMIT=1 git commit -m "WIP"
+```
+
+For more details, see [.githooks/README.md](.githooks/README.md)
 
 ### Running Tests
 
