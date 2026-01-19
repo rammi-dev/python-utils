@@ -149,7 +149,7 @@ class DbtOperator(BaseOperator):
             retry_limit: Internal retry attempts (default: 0 - use Airflow's retries instead)
             retry_delay: Initial delay between internal retries in seconds
             keep_target_artifacts: Keep target artifacts after execution (default: False - auto cleanup)
-            artefact_target_root: Root directory for dbt execution artifacts (default: /tmp)
+            artefact_target_root: Root directory for dbt execution artifacts. If not set, uses the DBT_ARTEFACT_TARGET_ROOT environment variable, otherwise defaults to /tmp.
             **kwargs: Additional arguments passed to BaseOperator (including retries)
         """
         super().__init__(task_id=task_id, **kwargs)
