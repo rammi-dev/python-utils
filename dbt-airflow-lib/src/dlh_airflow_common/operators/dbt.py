@@ -402,7 +402,9 @@ class DbtOperator(BaseOperator):
                 target_path=self._target_path,
                 pid=self._dbt_process.pid,
                 check_interval=self.check_interval,
-                timeout=int(self.execution_timeout.total_seconds()) if self.execution_timeout else 86400,
+                timeout=(
+                    int(self.execution_timeout.total_seconds()) if self.execution_timeout else 86400
+                ),
                 start_time=time.time(),
             ),
             method_name="execute_complete",
