@@ -3,7 +3,7 @@
 import json
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 import pytest
 from airflow import DAG
@@ -64,6 +64,27 @@ test_project:
     )
 
     return profiles_dir
+
+
+@pytest.fixture
+def mock_context() -> dict:
+    """Create a mock Airflow context with all required keys."""
+    mock_dag = Mock()
+    mock_dag.dag_id = "test_dag"
+
+    mock_task = Mock()
+    mock_task.task_id = "test_task"
+
+    mock_ti = Mock()
+    mock_ti.try_number = 1
+    mock_ti.xcom_push = Mock()
+
+    return {
+        "dag": mock_dag,
+        "task": mock_task,
+        "task_instance": mock_ti,
+        "ti": mock_ti,
+    }
 
 
 class TestDbtOperatorInitialization:
@@ -161,6 +182,7 @@ class TestDbtOperatorExecution:
         mock_hook_class: Mock,
         mock_venv_path: Path,
         mock_dbt_project: Path,
+        mock_context: dict,
     ) -> None:
         """Test successful dbt run execution with Airflow connection."""
         # Mock DbtHook
@@ -183,10 +205,8 @@ class TestDbtOperatorExecution:
             dbt_tags=["daily"],
         )
 
-        # Mock context
-        context = {
-            "ti": Mock(xcom_push=Mock()),
-        }
+        # Use mock context
+        context = mock_context
 
         result = operator.execute(context)
 
@@ -198,6 +218,9 @@ class TestDbtOperatorExecution:
             target=None,
             profiles_dir=None,
             env_vars={},
+            retry_limit=ANY,  # Don't check exact value
+            retry_delay=ANY,  # Don't check exact value
+            target_path=ANY,  # Unique target path generated
         )
 
         # Verify run_dbt_task was called with correct parameters
@@ -226,6 +249,7 @@ class TestDbtOperatorExecution:
         mock_venv_path: Path,
         mock_dbt_project: Path,
         mock_profiles_dir: Path,
+        mock_context: dict,
     ) -> None:
         """Test execution with profiles_dir (backward compatibility)."""
         mock_hook = Mock()
@@ -245,8 +269,7 @@ class TestDbtOperatorExecution:
             profiles_dir=str(mock_profiles_dir),
         )
 
-        context = {"ti": Mock(xcom_push=Mock())}
-        operator.execute(context)
+        operator.execute(mock_context)
 
         # Verify hook was created with profiles_dir
         mock_hook_class.assert_called_once_with(
@@ -256,6 +279,9 @@ class TestDbtOperatorExecution:
             target=None,
             profiles_dir=str(mock_profiles_dir),
             env_vars={},
+            retry_limit=ANY,
+            retry_delay=ANY,
+            target_path=ANY,
         )
 
     @patch("dlh_airflow_common.operators.dbt.DbtHook")
@@ -264,6 +290,7 @@ class TestDbtOperatorExecution:
         mock_hook_class: Mock,
         mock_venv_path: Path,
         mock_dbt_project: Path,
+        mock_context: dict,
     ) -> None:
         """Test dbt test command with fail_fast."""
         mock_hook = Mock()
@@ -283,7 +310,7 @@ class TestDbtOperatorExecution:
             fail_fast=True,
         )
 
-        context = {"ti": Mock(xcom_push=Mock())}
+        context = mock_context
         operator.execute(context)
 
         # Verify fail_fast was passed
@@ -302,6 +329,7 @@ class TestDbtOperatorExecution:
         mock_hook_class: Mock,
         mock_venv_path: Path,
         mock_dbt_project: Path,
+        mock_context: dict,
     ) -> None:
         """Test execution with models and exclude tags."""
         mock_hook = Mock()
@@ -319,7 +347,7 @@ class TestDbtOperatorExecution:
             exclude_tags=["deprecated", "slow"],
         )
 
-        context = {"ti": Mock(xcom_push=Mock())}
+        context = mock_context
         operator.execute(context)
 
         # Verify select includes both models and tags
@@ -333,6 +361,7 @@ class TestDbtOperatorExecution:
         mock_hook_class: Mock,
         mock_venv_path: Path,
         mock_dbt_project: Path,
+        mock_context: dict,
     ) -> None:
         """Test execution with full_refresh and variables."""
         mock_hook = Mock()
@@ -349,7 +378,7 @@ class TestDbtOperatorExecution:
             dbt_vars={"start_date": "2024-01-01", "env": "prod"},
         )
 
-        context = {"ti": Mock(xcom_push=Mock())}
+        context = mock_context
         operator.execute(context)
 
         # Verify parameters
@@ -363,6 +392,7 @@ class TestDbtOperatorExecution:
         mock_hook_class: Mock,
         mock_venv_path: Path,
         mock_dbt_project: Path,
+        mock_context: dict,
     ) -> None:
         """Test execution without artifact push."""
         mock_hook = Mock()
@@ -383,7 +413,7 @@ class TestDbtOperatorExecution:
             push_artifacts=False,
         )
 
-        context = {"ti": Mock(xcom_push=Mock())}
+        context = mock_context
         operator.execute(context)
 
         # Verify XCom push was NOT called
@@ -522,6 +552,7 @@ class TestDbtOperatorIntegration:
         mock_hook_class: Mock,
         mock_venv_path: Path,
         mock_dbt_project: Path,
+        mock_context: dict,
     ) -> None:
         """Test complete workflow with artifact handling."""
         # Setup mock hook with realistic results
@@ -561,7 +592,7 @@ class TestDbtOperatorIntegration:
             target="prod",
         )
 
-        context = {"ti": Mock(xcom_push=Mock())}
+        context = mock_context
         result = operator.execute(context)
 
         # Verify result structure
@@ -579,6 +610,7 @@ class TestDbtOperatorIntegration:
         mock_hook_class: Mock,
         mock_venv_path: Path,
         mock_dbt_project: Path,
+        mock_context: dict,
     ) -> None:
         """Test that environment variables are passed to hook."""
         mock_hook = Mock()
@@ -595,7 +627,7 @@ class TestDbtOperatorIntegration:
             env_vars=env_vars,
         )
 
-        context = {"ti": Mock(xcom_push=Mock())}
+        context = mock_context
         operator.execute(context)
 
         # Verify env_vars were passed to hook
@@ -606,6 +638,9 @@ class TestDbtOperatorIntegration:
             target=None,
             profiles_dir=None,
             env_vars=env_vars,
+            retry_limit=ANY,
+            retry_delay=ANY,
+            target_path=ANY,
         )
 
 
@@ -772,3 +807,147 @@ class TestDbtOperatorAirflowSerialization:
         assert dbt_test in dbt_run.downstream_list
         assert dbt_test in dbt_seed.downstream_list
         assert len(dbt_test.upstream_list) == 2
+
+
+class TestDbtOperatorArtifactIsolation:
+    """Tests for artifact isolation and cleanup features."""
+
+    def test_artifact_cleanup_on_success(
+        self, mock_venv_path: Path, mock_dbt_project: Path, mock_context: dict
+    ) -> None:
+        """Test that artifacts are cleaned up after successful execution."""
+        operator = DbtOperator(
+            task_id="dbt_run",
+            venv_path=str(mock_venv_path),
+            dbt_project_dir=str(mock_dbt_project),
+            dbt_command="run",
+            conn_id="dbt_postgres",
+            keep_target_artifacts=False,  # Default: cleanup enabled
+        )
+
+        with patch("dlh_airflow_common.operators.dbt.DbtHook") as mock_hook_class:
+            mock_hook = Mock()
+            mock_hook.run_dbt_task.return_value = Mock(success=True)
+            mock_hook.get_manifest.return_value = {"nodes": {}}
+            mock_hook.get_run_results.return_value = {"results": []}
+            mock_hook_class.return_value = mock_hook
+
+            with patch("dlh_airflow_common.operators.dbt.Path") as mock_path_class:
+                mock_path = Mock()
+                mock_path.exists.return_value = True
+                mock_path_class.return_value.__truediv__.return_value = mock_path
+
+                with patch("dlh_airflow_common.operators.dbt.shutil.rmtree") as mock_rmtree:
+                    result = operator.execute(mock_context)
+
+                    # Verify cleanup was called
+                    assert mock_rmtree.called
+                    assert result["success"] is True
+
+    def test_artifact_preservation_when_enabled(
+        self, mock_venv_path: Path, mock_dbt_project: Path, mock_context: dict
+    ) -> None:
+        """Test that artifacts are preserved when keep_target_artifacts=True."""
+        operator = DbtOperator(
+            task_id="dbt_run",
+            venv_path=str(mock_venv_path),
+            dbt_project_dir=str(mock_dbt_project),
+            dbt_command="run",
+            conn_id="dbt_postgres",
+            keep_target_artifacts=True,  # Preservation enabled
+        )
+
+        with patch("dlh_airflow_common.operators.dbt.DbtHook") as mock_hook_class:
+            mock_hook = Mock()
+            mock_hook.run_dbt_task.return_value = Mock(success=True)
+            mock_hook.get_manifest.return_value = {"nodes": {}}
+            mock_hook.get_run_results.return_value = {"results": []}
+            mock_hook_class.return_value = mock_hook
+
+            with patch("dlh_airflow_common.operators.dbt.shutil.rmtree") as mock_rmtree:
+                result = operator.execute(mock_context)
+
+                # Verify cleanup was NOT called
+                assert not mock_rmtree.called
+                assert result["success"] is True
+
+    def test_artifact_cleanup_on_failure(
+        self, mock_venv_path: Path, mock_dbt_project: Path, mock_context: dict
+    ) -> None:
+        """Test that artifacts are cleaned up even when execution fails."""
+        from dlh_airflow_common.exceptions.dbt import DbtRuntimeException
+
+        operator = DbtOperator(
+            task_id="dbt_run",
+            venv_path=str(mock_venv_path),
+            dbt_project_dir=str(mock_dbt_project),
+            dbt_command="run",
+            conn_id="dbt_postgres",
+            keep_target_artifacts=False,
+        )
+
+        with patch("dlh_airflow_common.operators.dbt.DbtHook") as mock_hook_class:
+            mock_hook = Mock()
+            mock_hook.run_dbt_task.side_effect = DbtRuntimeException("Test failure")
+            mock_hook_class.return_value = mock_hook
+
+            with patch("dlh_airflow_common.operators.dbt.Path") as mock_path_class:
+                mock_path = Mock()
+                mock_path.exists.return_value = True
+                mock_path_class.return_value.__truediv__.return_value = mock_path
+
+                with patch("dlh_airflow_common.operators.dbt.shutil.rmtree") as mock_rmtree:
+                    with pytest.raises(DbtRuntimeException):
+                        operator.execute(mock_context)
+
+                    # Verify cleanup was called even on failure
+                    assert mock_rmtree.called
+
+    def test_cleanup_failure_is_logged_not_raised(
+        self, mock_venv_path: Path, mock_dbt_project: Path, mock_context: dict
+    ) -> None:
+        """Test that cleanup failures are logged as warnings, not raised."""
+        operator = DbtOperator(
+            task_id="dbt_run",
+            venv_path=str(mock_venv_path),
+            dbt_project_dir=str(mock_dbt_project),
+            dbt_command="run",
+            conn_id="dbt_postgres",
+            keep_target_artifacts=False,
+        )
+
+        with patch("dlh_airflow_common.operators.dbt.DbtHook") as mock_hook_class:
+            mock_hook = Mock()
+            mock_hook.run_dbt_task.return_value = Mock(success=True)
+            mock_hook.get_manifest.return_value = {"nodes": {}}
+            mock_hook.get_run_results.return_value = {"results": []}
+            mock_hook_class.return_value = mock_hook
+
+            with patch("dlh_airflow_common.operators.dbt.shutil.rmtree") as mock_rmtree:
+                # Make cleanup fail
+                mock_rmtree.side_effect = OSError("Permission denied")
+
+                # Should not raise despite cleanup failure
+                result = operator.execute(mock_context)
+                assert result["success"] is True
+
+    def test_unique_target_path_generation(
+        self, mock_venv_path: Path, mock_dbt_project: Path, mock_context: dict
+    ) -> None:
+        """Test that unique target paths are generated correctly."""
+        operator = DbtOperator(
+            task_id="dbt_run",
+            venv_path=str(mock_venv_path),
+            dbt_project_dir=str(mock_dbt_project),
+            dbt_command="run",
+            conn_id="dbt_postgres",
+        )
+
+        # Generate target path
+        target_path = operator._generate_target_path(mock_context)
+
+        # Verify format
+        assert target_path.startswith("target/run_")
+        assert "test_dag" in target_path
+        assert "test_task" in target_path
+        assert "try1" in target_path

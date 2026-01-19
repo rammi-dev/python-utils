@@ -1,7 +1,6 @@
 """Integration tests for real dbt execution."""
 
 from pathlib import Path
-from unittest.mock import Mock
 
 import pytest
 
@@ -18,6 +17,7 @@ class TestDbtRealExecution:
         integration_venv_path: Path,
         dbt_test_project: Path,
         dbt_profiles_dir: Path,
+        airflow_context: dict,
     ):
         """Test actual dbt run with DuckDB adapter."""
         # Create operator
@@ -29,8 +29,8 @@ class TestDbtRealExecution:
             profiles_dir=str(dbt_profiles_dir),
         )
 
-        # Create mock context
-        context = {"ti": Mock(xcom_push=Mock())}
+        # Use proper Airflow context
+        context = airflow_context
 
         # Execute - this will actually run dbt
         result = operator.execute(context)
@@ -50,6 +50,7 @@ class TestDbtRealExecution:
         integration_venv_path: Path,
         dbt_test_project: Path,
         dbt_profiles_dir: Path,
+        airflow_context: dict,
     ):
         """Test actual dbt test command."""
         # First run models to have something to test
@@ -61,8 +62,7 @@ class TestDbtRealExecution:
             profiles_dir=str(dbt_profiles_dir),
         )
 
-        context = {"ti": Mock(xcom_push=Mock())}
-        run_operator.execute(context)
+        run_operator.execute(airflow_context)
 
         # Now run tests
         test_operator = DbtOperator(
@@ -73,7 +73,7 @@ class TestDbtRealExecution:
             profiles_dir=str(dbt_profiles_dir),
         )
 
-        result = test_operator.execute(context)
+        result = test_operator.execute(airflow_context)
         assert result["success"] is True
         assert result["command"] == "test"
 
@@ -82,6 +82,7 @@ class TestDbtRealExecution:
         integration_venv_path: Path,
         dbt_test_project: Path,
         dbt_profiles_dir: Path,
+        airflow_context: dict,
     ):
         """Test actual dbt seed command."""
         operator = DbtOperator(
@@ -92,9 +93,7 @@ class TestDbtRealExecution:
             profiles_dir=str(dbt_profiles_dir),
         )
 
-        context = {"ti": Mock(xcom_push=Mock())}
-
-        result = operator.execute(context)
+        result = operator.execute(airflow_context)
         assert result["success"] is True
         assert result["command"] == "seed"
         assert result["run_results"] is not None

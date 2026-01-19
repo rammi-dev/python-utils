@@ -9,6 +9,7 @@ import json
 import os
 import sys
 import tempfile
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -16,7 +17,22 @@ from typing import Any, Literal
 import yaml
 from airflow.exceptions import AirflowException
 from airflow.sdk.bases.hook import BaseHook
+from tenacity import (
+    RetryCallState,
+    retry,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_exponential,
+)
 
+from dlh_airflow_common.exceptions import (
+    DbtCompilationException,
+    DbtConnectionException,
+    DbtException,
+    DbtProfileException,
+    DbtRuntimeException,
+    classify_dbt_error,
+)
 from dlh_airflow_common.hooks.dbt_profiles import get_profile_adapter
 from dlh_airflow_common.utils.logging import get_logger
 
@@ -82,6 +98,9 @@ class DbtHook(BaseHook):
         target: str | None = None,
         profiles_dir: str | None = None,
         env_vars: dict[str, str] | None = None,
+        retry_limit: int = 0,
+        retry_delay: int = 1,
+        target_path: str | None = None,
     ):
         """
         Initialize the DbtHook.
@@ -93,6 +112,13 @@ class DbtHook(BaseHook):
             target: dbt target environment (e.g., 'dev', 'prod')
             profiles_dir: Path to directory containing profiles.yml (fallback if no conn_id)
             env_vars: Additional environment variables to set during dbt execution
+            retry_limit: Maximum retry attempts for retryable errors (default: 0 - disabled).
+                Use Airflow's native task retries instead. Only enable for advanced use cases
+                like long-running jobs that need fast recovery from transient network issues.
+            retry_delay: Initial delay between retries in seconds (default: 1)
+            target_path: Custom target path for dbt artifacts. If provided, this will be used
+                instead of the default 'target/' directory. Used for artifact isolation between
+                concurrent tasks.
 
         Raises:
             ValueError: If neither conn_id nor profiles_dir is provided
@@ -104,6 +130,9 @@ class DbtHook(BaseHook):
         self.target = target
         self.profiles_dir = profiles_dir
         self.env_vars = env_vars or {}
+        self.retry_limit = retry_limit
+        self.retry_delay = retry_delay
+        self.target_path = target_path
 
         # Internal state
         self._dbt_runner: Any = None
@@ -272,6 +301,117 @@ class DbtHook(BaseHook):
             "Neither conn_id nor profiles_dir provided for profile configuration"
         )
 
+    def _is_retryable_error(self, exception: Exception) -> bool:
+        """
+        Classify if an error is retryable (transient) vs terminal.
+
+        Uses the classify_dbt_error function to determine if an exception
+        represents a transient failure that should trigger retry logic.
+
+        Args:
+            exception: The exception to classify
+
+        Returns:
+            True if the error should be retried, False otherwise
+
+        Examples:
+            Connection errors -> True (retryable)
+            Compilation errors -> False (requires code fix)
+            Timeout errors -> True (retryable)
+            Profile errors -> False (requires config fix)
+        """
+        # Use the exception classifier
+        _, is_retryable = classify_dbt_error(exception)
+
+        # Additional check for DbtException subclasses
+        if isinstance(exception, DbtConnectionException):
+            return True
+        elif isinstance(exception, DbtRuntimeException):
+            return exception.is_retryable
+        elif isinstance(exception, (DbtCompilationException, DbtProfileException)):
+            return False
+
+        return is_retryable
+
+    def _log_retry_attempt(self, retry_state: RetryCallState) -> None:
+        """
+        Log retry attempt information.
+
+        Args:
+            retry_state: Tenacity retry state with attempt number and exception
+        """
+        attempt_number = retry_state.attempt_number
+        exception = retry_state.outcome.exception() if retry_state.outcome else None
+
+        if exception:
+            logger.warning(
+                f"dbt execution failed (attempt {attempt_number}/{self.retry_limit}): {exception}"
+            )
+            if retry_state.next_action:
+                logger.info(f"Retrying in {retry_state.next_action.sleep} seconds...")
+
+    def _log_node_results(self, run_results: dict[str, Any]) -> None:
+        """
+        Log structured information for each dbt node execution.
+
+        Provides operator-level visibility into model execution without
+        parsing raw dbt logs.
+
+        Args:
+            run_results: The dbt run_results.json content
+        """
+        results = run_results.get("results", [])
+
+        if not results:
+            logger.info("No node results to log")
+            return
+
+        # Summary statistics
+        status_counts = Counter(r.get("status") for r in results)
+        total_time = sum(r.get("execution_time", 0) for r in results)
+
+        logger.info("=" * 60)
+        logger.info("dbt Execution Summary")
+        logger.info("=" * 60)
+        logger.info(f"Total nodes: {len(results)}")
+        logger.info(f"Total time: {total_time:.2f}s")
+
+        for status, count in status_counts.items():
+            logger.info(f"  {status}: {count}")
+
+        # Log failed nodes with details
+        failed = [r for r in results if r.get("status") in ["error", "fail"]]
+        if failed:
+            logger.error(f"\n{len(failed)} node(s) failed:")
+            for result in failed:
+                node = result.get("unique_id", "unknown")
+                message = result.get("message", "No error message")
+                execution_time = result.get("execution_time", 0)
+                logger.error(f"  ❌ {node} ({execution_time:.2f}s)")
+                logger.error(f"     {message}")
+
+        # Log warned nodes
+        warned = [r for r in results if r.get("status") == "warn"]
+        if warned:
+            logger.warning(f"\n{len(warned)} node(s) with warnings:")
+            for result in warned:
+                node = result.get("unique_id", "unknown")
+                message = result.get("message", "No warning message")
+                logger.warning(f"  ⚠️  {node}")
+                logger.warning(f"     {message}")
+
+        # Log slowest nodes (top 5)
+        if len(results) > 1:
+            slowest = sorted(results, key=lambda r: r.get("execution_time", 0), reverse=True)[:5]
+            logger.info("\nSlowest nodes:")
+            for result in slowest:
+                node = result.get("unique_id", "unknown").split(".")[-1]  # Just the name
+                time_sec = result.get("execution_time", 0)
+                status = result.get("status", "unknown")
+                logger.info(f"  🐌 {node}: {time_sec:.2f}s ({status})")
+
+        logger.info("=" * 60)
+
     def run_dbt_task(
         self,
         command: Literal["run", "test", "snapshot", "seed", "compile", "deps"],
@@ -284,7 +424,7 @@ class DbtHook(BaseHook):
         **kwargs: Any,
     ) -> DbtTaskResult:
         """
-        Execute a dbt task using the dbtRunner Python API.
+        Execute a dbt task using the dbtRunner Python API with retry logic.
 
         Args:
             command: dbt command to execute (run, test, snapshot, seed, compile, deps)
@@ -300,7 +440,7 @@ class DbtHook(BaseHook):
             DbtTaskResult with success status, run_results, and manifest
 
         Raises:
-            AirflowException: If dbt execution fails
+            DbtException: If dbt execution fails (specific subclass based on error type)
 
         Example:
             result = hook.run_dbt_task(
@@ -312,6 +452,48 @@ class DbtHook(BaseHook):
             )
         """
         logger.info(f"Executing dbt {command} command")
+
+        # Wrap the execution in retry logic
+        retry_decorator = retry(
+            stop=stop_after_attempt(self.retry_limit),
+            wait=wait_exponential(multiplier=self.retry_delay, min=1, max=60),
+            retry=retry_if_exception(self._is_retryable_error),  # type: ignore[arg-type]
+            before_sleep=self._log_retry_attempt,
+            reraise=True,
+        )
+
+        # Apply retry logic to the execution function
+        retrying_execution = retry_decorator(self._run_dbt_task_impl)
+
+        return retrying_execution(
+            command=command,
+            select=select,
+            exclude=exclude,
+            selector=selector,
+            vars=vars,
+            full_refresh=full_refresh,
+            fail_fast=fail_fast,
+            **kwargs,
+        )
+
+    def _run_dbt_task_impl(
+        self,
+        command: str,
+        select: list[str] | None,
+        exclude: list[str] | None,
+        selector: str | None,
+        vars: dict[str, Any] | None,
+        full_refresh: bool,
+        fail_fast: bool,
+        **kwargs: Any,
+    ) -> DbtTaskResult:
+        """
+        Internal implementation of dbt task execution.
+
+        This method contains the actual execution logic and is wrapped
+        by retry logic in run_dbt_task.
+        """
+        logger.info(f"Starting dbt {command} execution")
 
         # Step 1: Setup dbt environment
         self._setup_dbt_environment()
@@ -353,6 +535,10 @@ class DbtHook(BaseHook):
         # Set project directory
         args.extend(["--project-dir", self.dbt_project_dir])
 
+        # Set custom target path if provided
+        if self.target_path:
+            args.extend(["--target-path", self.target_path])
+
         logger.info(f"dbt command: dbt {' '.join(args)}")
 
         # Step 4: Prepare environment variables
@@ -381,13 +567,23 @@ class DbtHook(BaseHook):
             else:
                 logger.error(f"dbt {command} failed")
                 if result.exception:
-                    raise AirflowException(
-                        f"dbt {command} failed with exception: {result.exception}"
-                    )
+                    # Classify the exception and raise appropriate type
+                    exception_class, is_retryable = classify_dbt_error(result.exception)  # type: ignore[arg-type]
+                    if exception_class == DbtRuntimeException:
+                        raise DbtRuntimeException(
+                            f"dbt {command} failed: {result.exception}",
+                            is_retryable=is_retryable,
+                        )
+                    else:
+                        raise exception_class(f"dbt {command} failed: {result.exception}")
 
-            # Step 6: Load artifacts
+            # Step 6: Load artifacts and log node-level results
             run_results = self.get_run_results()
             manifest = self.get_manifest()
+
+            # Log structured node results
+            if run_results:
+                self._log_node_results(run_results)
 
             exception_val = (
                 result.exception
@@ -403,9 +599,21 @@ class DbtHook(BaseHook):
                 exception=exception_val,
             )
 
+        except DbtException:
+            # Re-raise dbt-specific exceptions (already classified)
+            raise
+
         except Exception as e:
+            # Classify generic exceptions into dbt exception types
             logger.error(f"dbt {command} execution failed: {e}")
-            raise AirflowException(f"dbt {command} failed: {e}") from e
+            exception_class, is_retryable = classify_dbt_error(e)
+
+            if exception_class == DbtRuntimeException:
+                raise DbtRuntimeException(
+                    f"dbt {command} failed: {e}", is_retryable=is_retryable
+                ) from e
+            else:
+                raise exception_class(f"dbt {command} failed: {e}") from e
 
         finally:
             # Cleanup temporary profiles directory if created
@@ -433,7 +641,8 @@ class DbtHook(BaseHook):
                 if node["resource_type"] == "model":
                     print(f"Model: {node['name']}")
         """
-        manifest_path = Path(self.dbt_project_dir) / "target" / "manifest.json"
+        target_dir = self.target_path if self.target_path else "target"
+        manifest_path = Path(self.dbt_project_dir) / target_dir / "manifest.json"
 
         if not manifest_path.exists():
             logger.warning(f"Manifest file not found at: {manifest_path}")
@@ -465,7 +674,8 @@ class DbtHook(BaseHook):
                 if result['status'] == 'error':
                     print(f"  Error: {result.get('message')}")
         """
-        run_results_path = Path(self.dbt_project_dir) / "target" / "run_results.json"
+        target_dir = self.target_path if self.target_path else "target"
+        run_results_path = Path(self.dbt_project_dir) / target_dir / "run_results.json"
 
         if not run_results_path.exists():
             logger.warning(f"Run results file not found at: {run_results_path}")

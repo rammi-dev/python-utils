@@ -58,7 +58,11 @@ class TestDagFactoryIntegration:
 
             # Verify each DAG has required fields
             for _dag_id, dag_config in config.items():
-                assert "start_date" in dag_config
+                # start_date can be at top level or in default_args
+                has_start_date = "start_date" in dag_config or (
+                    "default_args" in dag_config and "start_date" in dag_config["default_args"]
+                )
+                assert has_start_date, f"start_date not found in {yaml_file}"
                 assert "schedule" in dag_config
                 assert "tasks" in dag_config
                 assert isinstance(dag_config["tasks"], dict)

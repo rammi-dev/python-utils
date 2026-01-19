@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 import yaml
+from airflow.exceptions import AirflowException
 
 from dlh_airflow_common.hooks.dbt import DbtHook, DbtTaskResult
 
@@ -293,7 +294,7 @@ class TestDbtHookLoadProfileFromConnection:
             conn_id="nonexistent",
         )
 
-        with pytest.raises(Exception, match="Failed to retrieve Airflow connection"):
+        with pytest.raises(AirflowException, match="Failed to retrieve Airflow connection"):
             hook._load_profile_from_connection()
 
     @patch("dlh_airflow_common.hooks.dbt.BaseHook.get_connection")
@@ -324,7 +325,7 @@ class TestDbtHookLoadProfileFromConnection:
             conn_id="test_conn",
         )
 
-        with pytest.raises(Exception, match="Failed to convert connection"):
+        with pytest.raises(AirflowException, match="Failed to convert connection"):
             hook._load_profile_from_connection()
 
 
@@ -723,7 +724,7 @@ class TestDbtHookEdgeCases:
         )
         hook.conn_id = None  # Force conn_id to None
 
-        with pytest.raises(Exception, match="conn_id must be set"):
+        with pytest.raises(AirflowException, match="conn_id must be set"):
             hook._load_profile_from_connection()
 
     def test_get_manifest_invalid_json(self, mock_venv: Path, mock_dbt_project: Path) -> None:
@@ -1051,7 +1052,7 @@ class TestDbtHookEdgeCases:
         hook.conn_id = None
         hook.profiles_dir = None
 
-        with pytest.raises(Exception, match="Neither conn_id nor profiles_dir"):
+        with pytest.raises(AirflowException, match="Neither conn_id nor profiles_dir"):
             hook._get_or_create_profiles_yml()
 
     @patch("dlh_airflow_common.hooks.dbt.BaseHook.get_connection")
