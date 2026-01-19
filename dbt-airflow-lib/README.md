@@ -121,34 +121,37 @@ with DAG(
 
     # Run dbt models with specific tags
     dbt_run_daily = DbtOperator(
-        task_id="dbt_run_daily",
-        venv_path="/opt/airflow/venvs/dbt-venv",
-        dbt_project_dir="/opt/airflow/dbt/my_project",
-        dbt_command="run",
-        dbt_tags=["daily", "core"],
-        target="prod",
+      task_id="dbt_run_daily",
+      venv_path="/opt/airflow/venvs/dbt-venv",
+      dbt_project_dir="/opt/airflow/dbt/my_project",
+      dbt_command="run",
+      dbt_tags=["daily", "core"],
+      target="prod",
+      artefact_target_root="/tmp/dbt-artifacts",  # Optional: custom artifact root
     )
 
     # Run dbt tests for daily models
     dbt_test_daily = DbtOperator(
-        task_id="dbt_test_daily",
-        venv_path="/opt/airflow/venvs/dbt-venv",
-        dbt_project_dir="/opt/airflow/dbt/my_project",
-        dbt_command="test",
-        dbt_tags=["daily"],
-        fail_fast=True,
-        target="prod",
+      task_id="dbt_test_daily",
+      venv_path="/opt/airflow/venvs/dbt-venv",
+      dbt_project_dir="/opt/airflow/dbt/my_project",
+      dbt_command="test",
+      dbt_tags=["daily"],
+      fail_fast=True,
+      target="prod",
+      artefact_target_root="/tmp/dbt-artifacts",
     )
 
     # Full refresh for incremental models
     dbt_run_incremental = DbtOperator(
-        task_id="dbt_run_incremental",
-        venv_path="/opt/airflow/venvs/dbt-venv",
-        dbt_project_dir="/opt/airflow/dbt/my_project",
-        dbt_command="run",
-        dbt_tags=["incremental"],
-        full_refresh=True,
-        target="prod",
+      task_id="dbt_run_incremental",
+      venv_path="/opt/airflow/venvs/dbt-venv",
+      dbt_project_dir="/opt/airflow/dbt/my_project",
+      dbt_command="run",
+      dbt_tags=["incremental"],
+      full_refresh=True,
+      target="prod",
+      artefact_target_root="/tmp/dbt-artifacts",
     )
 
     dbt_run_daily >> dbt_test_daily
@@ -170,6 +173,7 @@ with DAG(
 - **profiles_dir**: Custom path to dbt profiles directory (fallback if no conn_id)
 - **env_vars**: Additional environment variables
 - **push_artifacts**: Push manifest and run_results to XCom (default: True)
+- **artefact_target_root**: Root directory for dbt execution artifacts (default: `/tmp`). Use to isolate or redirect dbt output folders for each run.
 
 ### DAG Factory Integration
 

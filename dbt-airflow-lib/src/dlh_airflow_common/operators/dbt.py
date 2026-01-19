@@ -49,6 +49,7 @@ class DbtOperator(BaseOperator):
         profiles_dir: Path to dbt profiles directory (fallback if no conn_id)
         env_vars: Additional environment variables (optional)
         push_artifacts: Push manifest and run_results to XCom (default: True)
+        artefact_target_root: Root directory for dbt execution artifacts (default: /tmp)
         **kwargs: Additional arguments passed to BaseOperator
 
     Example (run with Airflow Connection):
@@ -61,6 +62,7 @@ class DbtOperator(BaseOperator):
         ...     dbt_tags=['daily', 'core'],
         ...     target='prod',
         ...     push_artifacts=True,
+        ...     artefact_target_root='/tmp/dbt-artifacts',
         ... )
 
     Example (seed data):
@@ -71,6 +73,7 @@ class DbtOperator(BaseOperator):
         ...     dbt_command='seed',
         ...     conn_id='dbt_dremio_prod',
         ...     target='dev',
+        ...     artefact_target_root='/tmp/dbt-artifacts',
         ... )
 
     Example (snapshot):
@@ -81,6 +84,7 @@ class DbtOperator(BaseOperator):
         ...     dbt_command='snapshot',
         ...     conn_id='dbt_dremio_prod',
         ...     target='prod',
+        ...     artefact_target_root='/tmp/dbt-artifacts',
         ... )
     """
 
@@ -117,6 +121,7 @@ class DbtOperator(BaseOperator):
         dbt_retry_limit: int = 0,
         dbt_retry_delay: int = 1,
         keep_target_artifacts: bool = False,
+        artefact_target_root: str | None = None,
         **kwargs: Any,
     ) -> None:
         """
@@ -144,6 +149,7 @@ class DbtOperator(BaseOperator):
             retry_limit: Internal retry attempts (default: 0 - use Airflow's retries instead)
             retry_delay: Initial delay between internal retries in seconds
             keep_target_artifacts: Keep target artifacts after execution (default: False - auto cleanup)
+            artefact_target_root: Root directory for dbt execution artifacts (default: /tmp)
             **kwargs: Additional arguments passed to BaseOperator (including retries)
         """
         super().__init__(task_id=task_id, **kwargs)
@@ -173,15 +179,22 @@ class DbtOperator(BaseOperator):
         # Internal state
         self._dbt_process: multiprocessing.Process | None = None
         self._target_path: str | None = None
+        if artefact_target_root is not None:
+            self.artefact_target_root = artefact_target_root
+        else:
+            import os
 
-    def _generate_target_path(self, context: Context) -> str:
+            self.artefact_target_root = os.environ.get("DBT_ARTEFACT_TARGET_ROOT", "/tmp")
+
+    def _generate_target_path(self, context: Context, artefact_target_root: str = "/tmp") -> str:
         """
         Generate a unique target path for this execution.
 
-        Format: target/run_{timestamp}_{dag_id}_{task_id}_{try_number}
+        Format: {artefact_target_root}/run_{timestamp}_{dag_id}_{task_id}_{try_number}
 
         Args:
             context: Airflow task context
+            artefact_target_root: Root directory for target artifacts (default: /tmp)
 
         Returns:
             Unique target path string
@@ -194,8 +207,8 @@ class DbtOperator(BaseOperator):
         # Create unique suffix
         suffix = f"run_{timestamp}_{dag_id}_{task_id}_try{try_number}"
 
-        # Return path relative to dbt_project_dir
-        return f"target/{suffix}"
+        # Return path relative to artefact_target_root
+        return f"{artefact_target_root}/{suffix}"
 
     def _cleanup_target_path(self) -> None:
         """
@@ -250,7 +263,7 @@ class DbtOperator(BaseOperator):
         self.logger.info(f"DBT project directory: {self.dbt_project_dir}")
 
         # Generate unique target path
-        self._target_path = self._generate_target_path(context)
+        self._target_path = self._generate_target_path(context, self.artefact_target_root)
         self.logger.info(f"Using isolated target path: {self._target_path}")
 
         # Log configuration mode
@@ -347,7 +360,7 @@ class DbtOperator(BaseOperator):
         self.logger.info("Worker slot will be freed while dbt executes")
 
         # Generate unique target path
-        self._target_path = self._generate_target_path(context)
+        self._target_path = self._generate_target_path(context, self.artefact_target_root)
         self.logger.info(f"Using isolated target path: {self._target_path}")
 
         # Capture target_path for background process

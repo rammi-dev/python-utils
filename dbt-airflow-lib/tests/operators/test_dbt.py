@@ -947,7 +947,28 @@ class TestDbtOperatorArtifactIsolation:
         target_path = operator._generate_target_path(mock_context)
 
         # Verify format
-        assert target_path.startswith("target/run_")
+        assert target_path.startswith("/tmp/run_")
+        assert "test_dag" in target_path
+        assert "test_task" in target_path
+        assert "try1" in target_path
+
+    def test_target_path_with_custom_artefact_root(
+        mock_venv_path: Path, mock_dbt_project: Path, mock_context: dict
+    ) -> None:
+        """Test that artefact_target_root parameter is used in target path generation."""
+        custom_root = "/custom/artifacts"
+        operator = DbtOperator(
+            task_id="dbt_run",
+            venv_path=str(mock_venv_path),
+            dbt_project_dir=str(mock_dbt_project),
+            dbt_command="run",
+            conn_id="dbt_postgres",
+            artefact_target_root=custom_root,
+        )
+
+        target_path = operator._generate_target_path(mock_context, operator.artefact_target_root)
+
+        assert target_path.startswith(f"{custom_root}/run_")
         assert "test_dag" in target_path
         assert "test_task" in target_path
         assert "try1" in target_path
