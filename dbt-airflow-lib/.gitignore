@@ -131,6 +131,9 @@ test-env/
 
 # mypy
 .mypy_cache/
+
+# ruff
+.ruff_cache/
 .dmypy.json
 dmypy.json
 

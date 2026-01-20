@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.10, <3.14"
 resolution-markers = [
     "python_full_version >= '3.13'",
@@ -1040,6 +1040,7 @@ dremio = [
 integration = [
     { name = "dag-factory" },
     { name = "dbt-duckdb" },
+    { name = "duckdb" },
 ]
 spark = [
     { name = "dbt-spark" },
@@ -1055,6 +1056,7 @@ requires-dist = [
     { name = "dbt-dremio", marker = "extra == 'dremio'", specifier = ">=1.8.0" },
     { name = "dbt-duckdb", marker = "extra == 'integration'", specifier = ">=1.8.0" },
     { name = "dbt-spark", marker = "extra == 'spark'", specifier = ">=1.8.0" },
+    { name = "duckdb", marker = "extra == 'integration'", specifier = ">=1.0.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21.0" },

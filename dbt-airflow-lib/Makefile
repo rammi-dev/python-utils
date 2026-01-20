@@ -20,7 +20,7 @@
 #   make format             # Check formatting (black)
 #   make format-fix         # Auto-fix formatting
 #   make type-check         # Run type checking (mypy)
-#   make all                # Run all checks
+#   make quality-all        # Run all quality checks (lint, format, type-check, test)
 #
 # Build & Deploy:
 #   make build              # Build package
@@ -35,7 +35,8 @@
 
 .PHONY: help install install-pip install-integration clean test test-cov test-cov-report \
         test-integration test-all coverage lint format format-fix type-check build publish-dev publish-prod \
-        publish-test version tox tox-parallel tox-parallel-verbose tox-integration tox-all tox-all-verbose all
+        publish-test version tox tox-parallel tox-parallel-verbose tox-integration tox-all tox-all-verbose \
+        quality-all check check-python ci
 
 .DEFAULT_GOAL := help
 
@@ -54,6 +55,7 @@ help:
 	@echo "  make install            Install with dev dependencies (uv)"
 	@echo "  make install-pip        Install with dev dependencies (pip fallback)"
 	@echo "  make install-integration Install integration test dependencies"
+	@echo "  make check              Check/install required Python versions for tox"
 	@echo ""
 	@echo "$(GREEN)Testing:$(NC)"
 	@echo "  make test               Run unit tests only (fast)"
@@ -71,7 +73,7 @@ help:
 	@echo "  make format             Check code formatting (black)"
 	@echo "  make format-fix         Auto-fix code formatting"
 	@echo "  make type-check         Run type checking (mypy)"
-	@echo "  make all                Run all checks (lint, format, type-check, test)"
+	@echo "  make quality-all        Run all checks (lint, format, type-check, test)"
 	@echo ""
 	@echo "$(GREEN)Build & Deploy:$(NC)"
 	@echo "  make build              Build package (wheel and sdist)"
@@ -98,6 +100,29 @@ install-integration:
 	uv pip install -e ".[integration]"
 	@echo "$(GREEN)Integration test dependencies installed$(NC)"
 	@echo "Run 'make test-integration' to execute integration tests"
+
+# Check that required Python versions are installed for tox
+check-python:
+	@echo "$(BLUE)Checking Python versions for tox...$(NC)"
+	@PY311_PATH=$$(uv python find 3.11 2>/dev/null); \
+	if [ -z "$$PY311_PATH" ] || [ ! -x "$$PY311_PATH" ]; then \
+		echo "$(YELLOW)Python 3.11 not found or invalid. Installing...$(NC)"; \
+		uv python install 3.11; \
+		rm -rf .tox/py311*; \
+	else \
+		echo "$(GREEN)Python 3.11: OK ($$PY311_PATH)$(NC)"; \
+	fi
+	@PY312_PATH=$$(uv python find 3.12 2>/dev/null); \
+	if [ -z "$$PY312_PATH" ] || [ ! -x "$$PY312_PATH" ]; then \
+		echo "$(YELLOW)Python 3.12 not found or invalid. Installing...$(NC)"; \
+		uv python install 3.12; \
+		rm -rf .tox/py312*; \
+	else \
+		echo "$(GREEN)Python 3.12: OK ($$PY312_PATH)$(NC)"; \
+	fi
+
+check: check-python
+	@echo "$(GREEN)All checks passed!$(NC)"
 
 # =============================================================================
 # Cleanup
@@ -149,7 +174,7 @@ coverage: test-cov-report
 
 # Multi-version testing with tox
 # Tests against Python 3.11 and 3.12 with Airflow 3.1 (shows full output)
-tox:
+tox: check-python
 	@echo "$(BLUE)Running tests on Python 3.11 and 3.12...$(NC)"
 	uv run tox -e py311-airflow31,py312-airflow31
 
@@ -158,21 +183,21 @@ tox-integration:
 	uv run tox -e integration
 
 # Run quality checks and tests in parallel (faster but hides output)
-tox-parallel:
+tox-parallel: check-python
 	@echo "$(BLUE)Running parallel tox tests (use 'make tox-parallel-verbose' to see output)...$(NC)"
 	uv run tox -e py311-airflow31,py312-airflow31,lint,format,type-check -p auto
 
 # Run quality checks and tests sequentially (shows full output)
-tox-parallel-verbose:
+tox-parallel-verbose: check-python
 	@echo "$(BLUE)Running all quality checks with verbose output...$(NC)"
 	uv run tox -e lint,format,type-check,py311-airflow31,py312-airflow31
 
 # Run all quality checks sequentially (alias for tox-parallel-verbose)
-tox-all-verbose:
+tox-all-verbose: check-python
 	@echo "$(BLUE)Running all quality checks with verbose output...$(NC)"
 	uv run tox -e lint,format,type-check,py311-airflow31,py312-airflow31
 
-tox-all:
+tox-all: check-python
 	@echo "$(BLUE)Running all tox environments...$(NC)"
 	uv run tox
 
@@ -237,9 +262,9 @@ publish-nexus: publish-dev
 # Combined Commands
 # =============================================================================
 
-all: lint format type-check test
+quality-all: lint format type-check test
 	@echo ""
-	@echo "$(GREEN)All checks passed!$(NC)"
+	@echo "$(GREEN)All quality checks passed!$(NC)"
 
 # CI simulation - run what GitLab CI runs
 ci: lint format type-check test-cov

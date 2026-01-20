@@ -49,6 +49,7 @@ dremio = ["dbt-dremio>=1.8.0"]
 spark = ["dbt-spark>=1.8.0"]
 integration = [
     "dbt-duckdb>=1.8.0",
+    "duckdb>=1.0.0",
     "dag-factory>=0.18.0",
 ]
 
