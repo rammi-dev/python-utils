@@ -12,7 +12,7 @@
 #   make test               # Run tests
 #   make test-cov           # Run tests with coverage (90% required)
 #   make test-cov-report    # Run tests and open HTML coverage report
-#   make tox                # Run tests on Python 3.11 and 3.12
+#   make tox                # Run tests on Python 3.11/3.12 × dbt 1.8/1.10
 #   make tox-parallel       # Run tox in parallel (faster)
 #
 # Code Quality:
@@ -63,7 +63,7 @@ help:
 	@echo "  make test-all           Run all tests (unit + integration)"
 	@echo "  make test-cov           Run unit tests with coverage (fails if <90%)"
 	@echo "  make test-cov-report    Run tests with coverage and open HTML report"
-	@echo "  make tox                Run tests on Python 3.11 and 3.12 (verbose)"
+	@echo "  make tox                Run tests on Python 3.11/3.12 × dbt 1.8/1.10"
 	@echo "  make tox-parallel       Run tox in parallel (fast, minimal output)"
 	@echo "  make tox-parallel-verbose Run all checks sequentially (shows full output)"
 	@echo "  make tox-integration    Run integration tests via tox"
@@ -173,10 +173,11 @@ test-cov-report: test-cov
 coverage: test-cov-report
 
 # Multi-version testing with tox
-# Tests against Python 3.11 and 3.12 with Airflow 3.1 (shows full output)
+# Tests against Python 3.11/3.12 × Airflow 3.1 × dbt-core 1.8/1.10 (shows full output)
+# Note: py312-dbt18 excluded due to importlib-metadata conflict
 tox: check-python
-	@echo "$(BLUE)Running tests on Python 3.11 and 3.12...$(NC)"
-	uv run tox -e py311-airflow31,py312-airflow31
+	@echo "$(BLUE)Running tests on Python 3.11/3.12 with dbt-core 1.8 and 1.10...$(NC)"
+	uv run tox -e py311-airflow31-dbt18,py311-airflow31-dbt110,py312-airflow31-dbt110
 
 tox-integration:
 	@echo "$(BLUE)Running integration tests via tox...$(NC)"
@@ -185,17 +186,17 @@ tox-integration:
 # Run quality checks and tests in parallel (faster but hides output)
 tox-parallel: check-python
 	@echo "$(BLUE)Running parallel tox tests (use 'make tox-parallel-verbose' to see output)...$(NC)"
-	uv run tox -e py311-airflow31,py312-airflow31,lint,format,type-check -p auto
+	uv run tox -e py311-airflow31-dbt18,py311-airflow31-dbt110,py312-airflow31-dbt110,lint,format,type-check -p auto
 
 # Run quality checks and tests sequentially (shows full output)
 tox-parallel-verbose: check-python
 	@echo "$(BLUE)Running all quality checks with verbose output...$(NC)"
-	uv run tox -e lint,format,type-check,py311-airflow31,py312-airflow31
+	uv run tox -e lint,format,type-check,py311-airflow31-dbt18,py311-airflow31-dbt110,py312-airflow31-dbt110
 
 # Run all quality checks sequentially (alias for tox-parallel-verbose)
 tox-all-verbose: check-python
 	@echo "$(BLUE)Running all quality checks with verbose output...$(NC)"
-	uv run tox -e lint,format,type-check,py311-airflow31,py312-airflow31
+	uv run tox -e lint,format,type-check,py311-airflow31-dbt18,py311-airflow31-dbt110,py312-airflow31-dbt110
 
 tox-all: check-python
 	@echo "$(BLUE)Running all tox environments...$(NC)"

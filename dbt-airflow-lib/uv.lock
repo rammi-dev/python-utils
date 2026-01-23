@@ -835,7 +835,7 @@ wheels = [
 
 [[package]]
 name = "dbt-core"
-version = "1.11.2"
+version = "1.10.19"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "agate" },
@@ -862,9 +862,9 @@ dependencies = [
     { name = "sqlparse" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/89/82/662621bd430fc6d8ee8e0e917bc551efba1b08b82372b3c0f37fd3ef4746/dbt_core-1.11.2.tar.gz", hash = "sha256:3306fee149b9f4e648071f2c9a46c0551100e1c829f13ad7ce026eb7226ad454", size = 914480, upload-time = "2025-12-22T19:14:04.488Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/cb/16/11675ab9d21bcf6519a93007bae933c6633f1a3a3e10eb319856fb22a761/dbt_core-1.10.19.tar.gz", hash = "sha256:707fe7aa5afb2b67aa7b14f0fc8a9482ea5de56bf660acd448218c107bb41bd5", size = 900530, upload-time = "2026-01-20T20:37:57.112Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/02/57/dad11af27a21840252234b05d682d73ca8eb721fc79d1b4aa9502bb1b6f5/dbt_core-1.11.2-py3-none-any.whl", hash = "sha256:ac332fd61a4494494f48e1bbdc0696e309e79036b94eb0a929233bb71f4b3898", size = 1004018, upload-time = "2025-12-22T19:14:03.213Z" },
+    { url = "https://files.pythonhosted.org/packages/7d/fe/af0e5ed9234819d708fad83ad07d3e780ba2c12d0e27db5c29af31cfc9f0/dbt_core-1.10.19-py3-none-any.whl", hash = "sha256:37f75b034a8b203032a2615487b999bb38dd3f8544d35f285eead3804ce33085", size = 987124, upload-time = "2026-01-20T20:37:55.615Z" },
 ]
 
 [[package]]
@@ -1052,7 +1052,7 @@ requires-dist = [
     { name = "black", marker = "extra == 'dev'", specifier = ">=23.0.0" },
     { name = "build", marker = "extra == 'dev'", specifier = ">=1.0.0" },
     { name = "dag-factory", marker = "extra == 'integration'", specifier = ">=0.18.0" },
-    { name = "dbt-core", specifier = ">=1.8.0" },
+    { name = "dbt-core", specifier = ">=1.8.0,<1.11.0" },
     { name = "dbt-dremio", marker = "extra == 'dremio'", specifier = ">=1.8.0" },
     { name = "dbt-duckdb", marker = "extra == 'integration'", specifier = ">=1.8.0" },
     { name = "dbt-spark", marker = "extra == 'spark'", specifier = ">=1.8.0" },
