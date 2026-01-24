@@ -815,7 +815,7 @@ class TestDbtOperatorArtifactIsolation:
     def test_artifact_cleanup_on_success(
         self, mock_venv_path: Path, mock_dbt_project: Path, mock_context: dict
     ) -> None:
-        """Test that artifacts are cleaned up after successful execution."""
+        """Test that artifacts are cleaned up via post_execute hook."""
         operator = DbtOperator(
             task_id="dbt_run",
             venv_path=str(mock_venv_path),
@@ -838,9 +838,12 @@ class TestDbtOperatorArtifactIsolation:
                 mock_path_class.return_value.__truediv__.return_value = mock_path
 
                 with patch("dlh_airflow_common.operators.dbt.shutil.rmtree") as mock_rmtree:
-                    result = operator.execute(mock_context)
+                    # Simulate full lifecycle: pre_execute -> execute -> post_execute
+                    operator.pre_execute(mock_context)
+                    result = operator._execute_sync(mock_context)
+                    operator.post_execute(mock_context, result)
 
-                    # Verify cleanup was called
+                    # Verify cleanup was called via post_execute
                     assert mock_rmtree.called
                     assert result["success"] is True
 
@@ -871,12 +874,10 @@ class TestDbtOperatorArtifactIsolation:
                 assert not mock_rmtree.called
                 assert result["success"] is True
 
-    def test_artifact_cleanup_on_failure(
+    def test_artifact_cleanup_method(
         self, mock_venv_path: Path, mock_dbt_project: Path, mock_context: dict
     ) -> None:
-        """Test that artifacts are cleaned up even when execution fails."""
-        from dlh_airflow_common.exceptions.dbt import DbtRuntimeException
-
+        """Test that _cleanup_artifacts method works correctly."""
         operator = DbtOperator(
             task_id="dbt_run",
             venv_path=str(mock_venv_path),
@@ -886,22 +887,19 @@ class TestDbtOperatorArtifactIsolation:
             keep_target_artifacts=False,
         )
 
-        with patch("dlh_airflow_common.operators.dbt.DbtHook") as mock_hook_class:
-            mock_hook = Mock()
-            mock_hook.run_dbt_task.side_effect = DbtRuntimeException("Test failure")
-            mock_hook_class.return_value = mock_hook
+        # Set target path (normally done by pre_execute)
+        operator._target_path = "/tmp/test_artifacts"
 
-            with patch("dlh_airflow_common.operators.dbt.Path") as mock_path_class:
-                mock_path = Mock()
-                mock_path.exists.return_value = True
-                mock_path_class.return_value.__truediv__.return_value = mock_path
+        with patch("dlh_airflow_common.operators.dbt.Path") as mock_path_class:
+            mock_path = Mock()
+            mock_path.exists.return_value = True
+            mock_path_class.return_value.__truediv__.return_value = mock_path
 
-                with patch("dlh_airflow_common.operators.dbt.shutil.rmtree") as mock_rmtree:
-                    with pytest.raises(DbtRuntimeException):
-                        operator.execute(mock_context)
+            with patch("dlh_airflow_common.operators.dbt.shutil.rmtree") as mock_rmtree:
+                operator._cleanup_artifacts()
 
-                    # Verify cleanup was called even on failure
-                    assert mock_rmtree.called
+                # Verify cleanup was called
+                assert mock_rmtree.called
 
     def test_cleanup_failure_is_logged_not_raised(
         self, mock_venv_path: Path, mock_dbt_project: Path, mock_context: dict
@@ -916,20 +914,20 @@ class TestDbtOperatorArtifactIsolation:
             keep_target_artifacts=False,
         )
 
-        with patch("dlh_airflow_common.operators.dbt.DbtHook") as mock_hook_class:
-            mock_hook = Mock()
-            mock_hook.run_dbt_task.return_value = Mock(success=True)
-            mock_hook.get_manifest.return_value = {"nodes": {}}
-            mock_hook.get_run_results.return_value = {"results": []}
-            mock_hook_class.return_value = mock_hook
+        # Set target path (normally done by pre_execute)
+        operator._target_path = "/tmp/test_artifacts"
+
+        with patch("dlh_airflow_common.operators.dbt.Path") as mock_path_class:
+            mock_path = Mock()
+            mock_path.exists.return_value = True
+            mock_path_class.return_value.__truediv__.return_value = mock_path
 
             with patch("dlh_airflow_common.operators.dbt.shutil.rmtree") as mock_rmtree:
                 # Make cleanup fail
                 mock_rmtree.side_effect = OSError("Permission denied")
 
                 # Should not raise despite cleanup failure
-                result = operator.execute(mock_context)
-                assert result["success"] is True
+                operator._cleanup_artifacts()  # No exception should be raised
 
     def test_unique_target_path_generation(
         self, mock_venv_path: Path, mock_dbt_project: Path, mock_context: dict

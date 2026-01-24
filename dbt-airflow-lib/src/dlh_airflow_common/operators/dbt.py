@@ -210,23 +210,65 @@ class DbtOperator(BaseOperator):
         # Return path relative to artefact_target_root
         return f"{artefact_target_root}/{suffix}"
 
-    def _cleanup_target_path(self) -> None:
+    def pre_execute(self, context: Context) -> None:
         """
-        Clean up the target path artifacts after execution.
+        Setup hook called before execute.
 
-        Only runs if keep_target_artifacts is False (default).
+        Generates unique target path and logs configuration.
+
+        Args:
+            context: Airflow task context
         """
-        if self.keep_target_artifacts or not self._target_path:
-            return
+        # Generate unique target path for this execution
+        self._target_path = self._generate_target_path(context, self.artefact_target_root)
 
-        target_full_path = Path(self.dbt_project_dir) / self._target_path
+        self.log.info("=" * 60)
+        self.log.info(f"DBT {self.dbt_command.upper()} - Task: {self.task_id}")
+        self.log.info("=" * 60)
 
-        if target_full_path.exists():
-            try:
-                shutil.rmtree(target_full_path)
-                self.logger.info(f"Cleaned up target artifacts at: {target_full_path}")
-            except Exception as e:
-                self.logger.warning(f"Failed to cleanup target artifacts: {e}")
+        # Log environment configuration
+        self.log.info("Environment Configuration:")
+        self.log.info(f"  Virtual environment: {self.venv_path}")
+        self.log.info(f"  DBT project directory: {self.dbt_project_dir}")
+        self.log.info(f"  Isolated target path: {self._target_path}")
+
+        # Log connection/profile mode
+        self.log.info("Profile Configuration:")
+        if self.conn_id:
+            self.log.info(f"  Using Airflow Connection: {self.conn_id}")
+        elif self.profiles_dir:
+            self.log.info(f"  Using profiles.yml from: {self.profiles_dir}")
+        else:
+            self.log.info("  Using default profiles.yml location")
+
+        if self.target:
+            self.log.info(f"  Target: {self.target}")
+
+        # Log model selection
+        if self.dbt_models or self.dbt_tags or self.exclude_tags:
+            self.log.info("Model Selection:")
+            if self.dbt_models:
+                self.log.info(f"  Models: {', '.join(self.dbt_models)}")
+            if self.dbt_tags:
+                self.log.info(f"  Tags: {', '.join(self.dbt_tags)}")
+            if self.exclude_tags:
+                self.log.info(f"  Exclude tags: {', '.join(self.exclude_tags)}")
+
+    def post_execute(self, context: Context, result: Any = None) -> None:
+        """
+        Teardown hook called after execute.
+
+        Cleans up target path artifacts unless keep_target_artifacts is True.
+
+        Args:
+            context: Airflow task context
+            result: Result from execute method
+        """
+        self.log.info("=" * 60)
+        self.log.info(f"DBT {self.dbt_command.upper()} - Teardown")
+        self.log.info("=" * 60)
+        self._cleanup_artifacts()
+        self.log.info(f"Task {self.task_id} completed")
 
     def execute(self, context: Context) -> dict[str, Any]:
         """
@@ -258,85 +300,91 @@ class DbtOperator(BaseOperator):
         Returns:
             Dictionary containing execution results
         """
-        self.logger.info(f"Starting DBT {self.dbt_command} command (sync mode)")
-        self.logger.info(f"Virtual environment: {self.venv_path}")
-        self.logger.info(f"DBT project directory: {self.dbt_project_dir}")
+        self.log.info("Executing in sync mode (blocking worker slot)")
 
-        # Generate unique target path
-        self._target_path = self._generate_target_path(context, self.artefact_target_root)
-        self.logger.info(f"Using isolated target path: {self._target_path}")
+        # Create DbtHook with retry configuration and unique target path
+        self.log.info("Creating DbtHook with configuration:")
+        self.log.info(f"  retry_limit={self.dbt_retry_limit}, retry_delay={self.dbt_retry_delay}")
+        hook = DbtHook(
+            venv_path=self.venv_path,
+            dbt_project_dir=self.dbt_project_dir,
+            conn_id=self.conn_id,
+            target=self.target,
+            profiles_dir=self.profiles_dir,
+            env_vars=self.env_vars,
+            retry_limit=self.dbt_retry_limit,
+            retry_delay=self.dbt_retry_delay,
+            target_path=self._target_path,
+        )
 
-        # Log configuration mode
-        if self.conn_id:
-            self.logger.info(f"Using Airflow Connection: {self.conn_id}")
-        elif self.profiles_dir:
-            self.logger.info(f"Using profiles.yml from: {self.profiles_dir}")
+        # Build select list (combine models and tags)
+        select: list[str] = []
+        if self.dbt_models:
+            select.extend(self.dbt_models)
+        if self.dbt_tags:
+            select.extend([f"tag:{tag}" for tag in self.dbt_tags])
 
-        try:
-            # Create DbtHook with retry configuration and unique target path
-            hook = DbtHook(
-                venv_path=self.venv_path,
-                dbt_project_dir=self.dbt_project_dir,
-                conn_id=self.conn_id,
-                target=self.target,
-                profiles_dir=self.profiles_dir,
-                env_vars=self.env_vars,
-                retry_limit=self.dbt_retry_limit,
-                retry_delay=self.dbt_retry_delay,
-                target_path=self._target_path,
-            )
+        # Build exclude list
+        exclude: list[str] | None = None
+        if self.exclude_tags:
+            exclude = [f"tag:{tag}" for tag in self.exclude_tags]
 
-            # Build select list (combine models and tags)
-            select: list[str] = []
-            if self.dbt_models:
-                select.extend(self.dbt_models)
-                self.logger.info(f"Models: {', '.join(self.dbt_models)}")
+        # Log execution parameters
+        if select:
+            self.log.info(f"Select filters: {select}")
+        if exclude:
+            self.log.info(f"Exclude filters: {exclude}")
+        if self.dbt_vars:
+            self.log.info(f"Variables: {self.dbt_vars}")
+        if self.full_refresh:
+            self.log.info("Full refresh enabled")
+        if self.fail_fast:
+            self.log.info("Fail fast enabled")
 
-            if self.dbt_tags:
-                select.extend([f"tag:{tag}" for tag in self.dbt_tags])
-                self.logger.info(f"Tags: {', '.join(self.dbt_tags)}")
+        self.log.info(f"Executing dbt {self.dbt_command}...")
 
-            # Build exclude list
-            exclude: list[str] | None = None
-            if self.exclude_tags:
-                exclude = [f"tag:{tag}" for tag in self.exclude_tags]
-                self.logger.info(f"Exclude tags: {', '.join(self.exclude_tags)}")
+        # Execute via hook
+        result: DbtTaskResult = hook.run_dbt_task(
+            command=self.dbt_command,
+            select=select or None,
+            exclude=exclude,
+            vars=self.dbt_vars,
+            full_refresh=self.full_refresh,
+            fail_fast=self.fail_fast,
+        )
 
-            if self.target:
-                self.logger.info(f"Target: {self.target}")
+        # Push artifacts to XCom for downstream tasks
+        if self.push_artifacts:
+            if result.manifest:
+                self.log.info("Pushing manifest to XCom")
+                context["ti"].xcom_push(key="manifest", value=result.manifest)
 
-            # Execute via hook
-            result: DbtTaskResult = hook.run_dbt_task(
-                command=self.dbt_command,
-                select=select or None,
-                exclude=exclude,
-                vars=self.dbt_vars,
-                full_refresh=self.full_refresh,
-                fail_fast=self.fail_fast,
-            )
+            if result.run_results:
+                self.log.info("Pushing run_results to XCom")
+                context["ti"].xcom_push(key="run_results", value=result.run_results)
 
-            # Push artifacts to XCom for downstream tasks (NEW)
-            if self.push_artifacts:
-                if result.manifest:
-                    self.logger.info("Pushing manifest to XCom")
-                    context["ti"].xcom_push(key="manifest", value=result.manifest)
+        self.log.info(f"DBT {self.dbt_command} completed successfully")
 
-                if result.run_results:
-                    self.logger.info("Pushing run_results to XCom")
-                    context["ti"].xcom_push(key="run_results", value=result.run_results)
+        # Return structured result
+        return {
+            "success": result.success,
+            "command": result.command,
+            "run_results": result.run_results,
+            "manifest": result.manifest,
+        }
 
-            self.logger.info(f"DBT {self.dbt_command} completed successfully")
+    def _cleanup_artifacts(self) -> None:
+        """Clean up target artifacts if configured."""
+        if self.keep_target_artifacts or not self._target_path:
+            return
 
-            # Return structured result
-            return {
-                "success": result.success,
-                "command": result.command,
-                "run_results": result.run_results,
-                "manifest": result.manifest,
-            }
-        finally:
-            # Always cleanup target artifacts (success or failure)
-            self._cleanup_target_path()
+        target_full_path = Path(self.dbt_project_dir) / self._target_path
+        if target_full_path.exists():
+            try:
+                shutil.rmtree(target_full_path)
+                self.log.info(f"Cleaned up target artifacts at: {target_full_path}")
+            except Exception as e:
+                self.log.warning(f"Failed to cleanup target artifacts: {e}")
 
     def _execute_deferrable(self, context: Context) -> dict[str, Any]:  # pragma: no cover
         """
@@ -356,15 +404,31 @@ class DbtOperator(BaseOperator):
         Returns:
             Does not return directly - defers to trigger and resumes via execute_complete
         """
-        self.logger.info(f"Starting DBT {self.dbt_command} command (deferrable mode)")
-        self.logger.info("Worker slot will be freed while dbt executes")
+        self.log.info("Executing in deferrable mode (async, frees worker slot)")
+        self.log.info(f"  Check interval: {self.check_interval}s")
+        self.log.info(f"  Timeout: {self.execution_timeout.total_seconds() if self.execution_timeout else 86400}s")
 
-        # Generate unique target path
-        self._target_path = self._generate_target_path(context, self.artefact_target_root)
-        self.logger.info(f"Using isolated target path: {self._target_path}")
-
-        # Capture target_path for background process
+        # Capture target_path for background process (set by pre_execute)
         target_path = self._target_path
+
+        # Log execution parameters
+        select: list[str] = []
+        if self.dbt_models:
+            select.extend(self.dbt_models)
+        if self.dbt_tags:
+            select.extend([f"tag:{tag}" for tag in self.dbt_tags])
+        exclude: list[str] | None = None
+        if self.exclude_tags:
+            exclude = [f"tag:{tag}" for tag in self.exclude_tags]
+
+        if select:
+            self.log.info(f"Select filters: {select}")
+        if exclude:
+            self.log.info(f"Exclude filters: {exclude}")
+        if self.dbt_vars:
+            self.log.info(f"Variables: {self.dbt_vars}")
+
+        self.log.info("Starting background process for dbt execution...")
 
         # Start dbt execution in background process
         def run_dbt_background() -> None:
@@ -406,7 +470,7 @@ class DbtOperator(BaseOperator):
         self._dbt_process = multiprocessing.Process(target=run_dbt_background)
         self._dbt_process.start()
 
-        self.logger.info(f"Started dbt process (PID: {self._dbt_process.pid})")
+        self.log.info(f"Started dbt process (PID: {self._dbt_process.pid})")
 
         # Defer to trigger
         self.defer(
@@ -447,7 +511,7 @@ class DbtOperator(BaseOperator):
         message = event.get("message", "")
         elapsed = event.get("elapsed_seconds", 0)
 
-        self.logger.info(f"dbt execution completed with status: {status} ({elapsed:.1f}s)")
+        self.log.info(f"dbt execution completed with status: {status} ({elapsed:.1f}s)")
 
         try:
             if status == "timeout":
@@ -473,14 +537,14 @@ class DbtOperator(BaseOperator):
             # Push artifacts to XCom
             if self.push_artifacts:
                 if manifest:
-                    self.logger.info("Pushing manifest to XCom")
+                    self.log.info("Pushing manifest to XCom")
                     context["ti"].xcom_push(key="manifest", value=manifest)
 
                 if run_results:
-                    self.logger.info("Pushing run_results to XCom")
+                    self.log.info("Pushing run_results to XCom")
                     context["ti"].xcom_push(key="run_results", value=run_results)
 
-            self.logger.info(f"DBT {self.dbt_command} completed successfully")
+            self.log.info(f"DBT {self.dbt_command} completed successfully")
 
             return {
                 "success": True,
@@ -491,7 +555,7 @@ class DbtOperator(BaseOperator):
             }
         finally:
             # Always cleanup target artifacts (success or failure)
-            self._cleanup_target_path()
+            self._cleanup_artifacts()
 
     def on_kill(self) -> None:  # pragma: no cover
         """
@@ -507,10 +571,10 @@ class DbtOperator(BaseOperator):
         3. Force kill if necessary
         4. Log partial results if available
         """
-        self.logger.warning(f"Cancellation requested for task {self.task_id}")
+        self.log.warning(f"Cancellation requested for task {self.task_id}")
 
         if self._dbt_process and self._dbt_process.is_alive():
-            self.logger.info(f"Terminating dbt process (PID: {self._dbt_process.pid})")
+            self.log.info(f"Terminating dbt process (PID: {self._dbt_process.pid})")
 
             # Send graceful termination signal
             self._dbt_process.terminate()
@@ -519,11 +583,11 @@ class DbtOperator(BaseOperator):
             self._dbt_process.join(timeout=30)
 
             if self._dbt_process.is_alive():
-                self.logger.warning("dbt process did not terminate gracefully, forcing kill")
+                self.log.warning("dbt process did not terminate gracefully, forcing kill")
                 self._dbt_process.kill()
                 self._dbt_process.join()
 
-            self.logger.info("dbt process terminated")
+            self.log.info("dbt process terminated")
 
         # Try to load partial results
         try:
@@ -541,9 +605,9 @@ class DbtOperator(BaseOperator):
                 results_list = run_results.get("results", [])
                 completed = sum(1 for r in results_list if r.get("status") == "success")
                 total = len(results_list)
-                self.logger.info(f"Partial execution: {completed}/{total} nodes completed")
+                self.log.info(f"Partial execution: {completed}/{total} nodes completed")
         except Exception as e:
-            self.logger.debug(f"Could not retrieve partial results: {e}")
+            self.log.debug(f"Could not retrieve partial results: {e}")
         finally:
             # Always cleanup target artifacts on kill
-            self._cleanup_target_path()
+            self._cleanup_artifacts()
