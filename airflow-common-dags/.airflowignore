@@ -1,0 +1,23 @@
+# Directories to exclude from Airflow DAG parsing
+tests/
+common/
+
+# Config files
+.pre-commit-config.yaml
+pyproject.toml
+Makefile
+
+# Documentation
+*.md
+
+# Environment files
+.gitignore
+.python-version
+
+# Cache directories
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
