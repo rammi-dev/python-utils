@@ -1,17 +1,22 @@
 """Dummy DAG for testing and demonstration."""
 
+import sys
 from datetime import datetime
+from pathlib import Path
 
-from airflow import DAG
-from airflow.providers.standard.operators.empty import EmptyOperator
+# Add parent directory to path for common module access
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from airflow.sdk import dag, task
 
 from common.utils import generate_dag_id, get_default_args
 
 # Use common utilities
-dag_id = generate_dag_id("example", "dummy")
+dag_id = generate_dag_id("example", "dummy", "devcontainer")
 default_args = get_default_args(owner="test-team")
 
-with DAG(
+
+@dag(
     dag_id=dag_id,
     default_args=default_args,
     description="A dummy DAG for testing",
@@ -19,8 +24,17 @@ with DAG(
     schedule=None,
     catchup=False,
     tags=["example", "test"],
-) as dag:
-    start = EmptyOperator(task_id="start")
-    end = EmptyOperator(task_id="end")
+)
+def dummy_dag() -> None:
+    @task
+    def start() -> None:
+        pass
 
-    start >> end
+    @task
+    def end() -> None:
+        pass
+
+    start() >> end()
+
+
+dummy_dag()

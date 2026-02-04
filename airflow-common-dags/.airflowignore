@@ -1,23 +1,24 @@
-# Directories to exclude from Airflow DAG parsing
-tests/
-common/
+# Airflow 3.1 - regexp syntax (default)
+# Patterns match against relative path from this directory
 
-# Config files
-.pre-commit-config.yaml
-pyproject.toml
+# Exclude non-DAG directories
+^tests
+^common
+
+# Exclude specific files
+conftest\.py
+__init__\.py
+
+# Config and docs
+\.md$
+\.yaml$
+\.toml$
 Makefile
 
-# Documentation
-*.md
-
-# Environment files
-.gitignore
-.python-version
-
-# Cache directories
-__pycache__/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-htmlcov/
+# Cache
+__pycache__
+\.pytest_cache
+\.mypy_cache
+\.ruff_cache
+\.coverage
+htmlcov
